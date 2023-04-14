@@ -1,3 +1,0 @@
-module Pokemon.JSON where
-
-
