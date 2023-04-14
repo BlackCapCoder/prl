@@ -29,6 +29,8 @@ import Data.IntMap             qualified as IM
 import Data.Map                qualified as M
 import Data.Text               qualified as Text
 import Weighted                qualified
+import StyledString
+import Data.List (intercalate, intersperse)
 
 
 -- After an encounter, minimum number of turns before the next encounter
@@ -454,20 +456,27 @@ strMonInfo api mon = unwords $ filter (not . null)
   where
     stats = getStats api mon
 
+sstrMonInfo api mon =
+  sstr $ strMonInfo api mon
+
 pad n str =
   str <> replicate (n - length str) ' '
 
-strMoves api mon =
+spad n (StyledString str) =
+  StyledString str <> StyledString (replicate (n - length str) mempty)
+
+sstrMoves api mon =
   "PP    typ cat pwr Move" : "" :
-    [ unwords
-      [ pad 5 $ show move.pp <> "/" <> show info.pp
-      , show $ TYPE.typeFromName $ Text.unpack $ info._type.name
-      , cat $ info.damage_class.name
-      , pad 3 $ maybe "-" show info.power
-      , Text.unpack $ info.name
+    [ mconcat $ intersperse " "
+      [ sstr $ pad 5 $ show move.pp <> "/" <> show info.pp
+      , fg (typeColor ty) $ sshow ty
+      , cat info.damage_class.name
+      , sstr $ pad 3 $ maybe "-" show info.power
+      , sstr $ Text.unpack $ info.name
       ]
     | move <- mon.moves
     , info <- maybeToList $ IM.lookup move.id api.moves
+    , let ty = TYPE.typeFromName $ Text.unpack $ info._type.name
     ]
   where
     cat = \case
@@ -475,39 +484,62 @@ strMoves api mon =
       "special"  -> "spe"
       _          -> "sta"
 
-strStats api mon =
+sstrStats api mon =
   [ "    Base IVs EVs"
-  , "HP  " <> pad 5 (show sta.hp  <> sign nat.hp ) <> pad 4 (show mon.ivs.hp ) <> pad 3 (show mon.evs.hp )
-  , "Att " <> pad 5 (show sta.att <> sign nat.att) <> pad 4 (show mon.ivs.att) <> pad 3 (show mon.evs.att)
-  , "Def " <> pad 5 (show sta.def <> sign nat.def) <> pad 4 (show mon.ivs.def) <> pad 3 (show mon.evs.def)
-  , "SpA " <> pad 5 (show sta.spA <> sign nat.spA) <> pad 4 (show mon.ivs.spA) <> pad 3 (show mon.evs.spA)
-  , "SpD " <> pad 5 (show sta.spD <> sign nat.spD) <> pad 4 (show mon.ivs.spD) <> pad 3 (show mon.evs.spD)
-  , "Spe " <> pad 5 (show sta.spe <> sign nat.spe) <> pad 4 (show mon.ivs.spe) <> pad 3 (show mon.evs.spe)
+  , "HP  " <> spad 5 (sshow sta.hp  <> sign nat.hp ) <> spad 4 (sshow mon.ivs.hp ) <> spad 3 (sshow mon.evs.hp )
+  , "Att " <> spad 5 (sshow sta.att <> sign nat.att) <> spad 4 (sshow mon.ivs.att) <> spad 3 (sshow mon.evs.att)
+  , "Def " <> spad 5 (sshow sta.def <> sign nat.def) <> spad 4 (sshow mon.ivs.def) <> spad 3 (sshow mon.evs.def)
+  , "SpA " <> spad 5 (sshow sta.spA <> sign nat.spA) <> spad 4 (sshow mon.ivs.spA) <> spad 3 (sshow mon.evs.spA)
+  , "SpD " <> spad 5 (sshow sta.spD <> sign nat.spD) <> spad 4 (sshow mon.ivs.spD) <> spad 3 (sshow mon.evs.spD)
+  , "Spe " <> spad 5 (sshow sta.spe <> sign nat.spe) <> spad 4 (sshow mon.ivs.spe) <> spad 3 (sshow mon.evs.spe)
   ]
   where
     nat = natureBoost mon.nature
     sta = getStats api mon
 
     sign n = case compare n 1 of
-      LT -> "-"
+      LT -> fg (RGB 96 96 255) "-"
       EQ -> ""
-      GT -> "+"
+      GT -> fg (RGB 255 0 0) "+"
 
-strExtra api mon =
-  [ "Ability " <> Text.unpack ability.name
-  , "Item    " <> maybe "None" (\i -> Text.unpack i.name) item
-  , "Exp     " <> show mon.totalExp
+sstrExtra api mon =
+  [ "Ability " <> sstr do Text.unpack ability.name
+  , "Item    " <> sstr do maybe "None" (\i -> Text.unpack i.name) item
+  , "Exp     " <> sstr do show mon.totalExp
   ]
   where
     Just ability = IM.lookup mon.ability api.abilities
     item = mon.heldItem >>= \id -> IM.lookup id api.items
 
-strStatMoves api mon =
-  zipWith (\l r -> l <> " | " <> r)
-    do strStats api mon
-    do strMoves api mon <> repeat []
+sstrStatMoves api mon =
+  zipWith (\l r -> l <> sstr " | " <> r)
+    do sstrStats api mon
+    do sstrMoves api mon <> repeat mempty
 
 picStats api mon = Pictures
-  [ Text $ unlines $ strMonInfo api mon : "" : strStatMoves api mon <> [""] <> strExtra api mon
+  [ slines2pic $ sstrMonInfo api mon : mempty : sstrStatMoves api mon
+              <> [mempty] <> sstrExtra api mon
+  -- , Text $ unlines $ strMonInfo api mon : "" : strStatMoves api mon <> [""] <> strExtra api mon
   ]
+
+typeColor = \case
+  NON -> RGB 255 255 255
+  NOR -> RGB 255 255 255
+  FIR -> RGB 255 0   0
+  WAT -> RGB 0   255 255
+  ELE -> RGB 255 255 0
+  GRA -> RGB 0   255 0
+  ICE -> RGB 135 206 255
+  FIG -> RGB 139 69  19
+  POI -> RGB 128 0   128
+  GRO -> RGB 210 180 140
+  FLY -> RGB 135 206 250
+  PSY -> RGB 255 0   255
+  BUG -> RGB 144 238 144
+  ROC -> RGB 160 82  45
+  GHO -> RGB 75  0   130
+  DRA -> RGB 75  0   130
+  DAR -> RGB 75  0   130
+  STE -> RGB 192 192 192
+  FAI -> RGB 255 20  147
 
