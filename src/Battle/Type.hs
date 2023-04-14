@@ -42,6 +42,7 @@ data BattleMon = BattleMon
    , wideGuard   :: Bool
    , flinched    :: Bool
    , confusion   :: Countdown
+   , embargo     :: Countdown
    }
 
 newBattleMon api pok = BattleMon
@@ -74,6 +75,7 @@ newBattleMon api pok = BattleMon
   , wideGuard   = False
   , flinched    = False
   , confusion   = -1
+  , embargo     = 0
   }
 
 ----

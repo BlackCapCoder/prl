@@ -340,14 +340,14 @@ data MachineVersionDetail = MachineVersionDetail
 ----
 
 data Move = Move
-   { id       :: Int
-   , name     :: Text
-   , pp       :: Int
-   , priority :: Int
-   , power    :: Maybe Int
-   , accuracy :: Int
+   { id           :: Int
+   , name         :: Text
+   , pp           :: Int
+   , priority     :: Int
+   , power        :: Maybe Int
+   , accuracy     :: Int
    , damage_class :: NamedAPIResource
-   , _type :: NamedAPIResource
+   , _type        :: NamedAPIResource
    }
    deriving (Show, Eq, Ord)
 

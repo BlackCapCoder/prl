@@ -16,6 +16,7 @@ import Pokemon.PokeAPI qualified as API
 import Pokemon.Pokemon
 import Pokemon.Nature
 import Pokemon.Stat
+import Pokemon.Type as TYPE
 
 import Control.Monad.State
 import Data.Bifunctor
@@ -55,8 +56,8 @@ initialWorld = do
   Just (h, w) <- getTerminalSize
   let world = World
         { wm         = worldMap
-        -- , pl         = Pos 4 (V2 4 3)
-        , pl         = Pos 7 (V2 20 10)
+        , pl         = Pos 4 (V2 4 3)
+        -- , pl         = Pos 7 (V2 20 10)
         , menuCursor = 0
         , twidth     = w
         , theight    = h
@@ -345,7 +346,11 @@ pokemonMenu = do
       , maybe "" statusAbriv mon.status
       ]
 
-  choose xs
+  choose xs >>= \case
+    Nothing -> pure ()
+    Just ix -> do
+      lift $ draw $ picStats api $ party !! ix
+      void $ lift $ liftIO acceptInput
 
   pure ()
 
@@ -421,4 +426,88 @@ battle (mon :: Pokemon) = do
   let b = Battle.newBattle twidth theight api party [mon] True
   Battle.runBattle b
   pure ()
+
+
+----
+
+-- Bulbasaur M Lv100 SLP [############--] 19/19
+--
+--     Base IVs EVs | PP    typ cat pwr Move
+-- HP  100  31  252 |
+-- Att 100+ 31  252 | 10/10 NOR sta -   Growl
+-- Def 100  31  252 | 10/10 NOR phy 40  Tackle
+-- SpA 100  31  252 | 10/10 GRA phy 45  Vine-whip
+-- SpD 100- 31  252 | 10/10 NOR phy 40  Pound
+-- Spe 100  31  252 |
+--
+-- Ability  Overgrow
+-- Item     None
+-- Exp      1000000
+
+strMonInfo api mon = unwords $ filter (not . null)
+  [ pokemonName api mon
+  , genderAbriv mon.gender
+  , "Lv" <> show mon.level
+  , maybe "" statusAbriv mon.status
+  , show mon.hp <> "/" <> show stats.hp
+  ]
+  where
+    stats = getStats api mon
+
+pad n str =
+  str <> replicate (n - length str) ' '
+
+strMoves api mon =
+  "PP    typ cat pwr Move" : "" :
+    [ unwords
+      [ pad 5 $ show move.pp <> "/" <> show info.pp
+      , show $ TYPE.typeFromName $ Text.unpack $ info._type.name
+      , cat $ info.damage_class.name
+      , pad 3 $ maybe "-" show info.power
+      , Text.unpack $ info.name
+      ]
+    | move <- mon.moves
+    , info <- maybeToList $ IM.lookup move.id api.moves
+    ]
+  where
+    cat = \case
+      "physical" -> "phy"
+      "special"  -> "spe"
+      _          -> "sta"
+
+strStats api mon =
+  [ "    Base IVs EVs"
+  , "HP  " <> pad 5 (show sta.hp  <> sign nat.hp ) <> pad 4 (show mon.ivs.hp ) <> pad 3 (show mon.evs.hp )
+  , "Att " <> pad 5 (show sta.att <> sign nat.att) <> pad 4 (show mon.ivs.att) <> pad 3 (show mon.evs.att)
+  , "Def " <> pad 5 (show sta.def <> sign nat.def) <> pad 4 (show mon.ivs.def) <> pad 3 (show mon.evs.def)
+  , "SpA " <> pad 5 (show sta.spA <> sign nat.spA) <> pad 4 (show mon.ivs.spA) <> pad 3 (show mon.evs.spA)
+  , "SpD " <> pad 5 (show sta.spD <> sign nat.spD) <> pad 4 (show mon.ivs.spD) <> pad 3 (show mon.evs.spD)
+  , "Spe " <> pad 5 (show sta.spe <> sign nat.spe) <> pad 4 (show mon.ivs.spe) <> pad 3 (show mon.evs.spe)
+  ]
+  where
+    nat = natureBoost mon.nature
+    sta = getStats api mon
+
+    sign n = case compare n 1 of
+      LT -> "-"
+      EQ -> ""
+      GT -> "+"
+
+strExtra api mon =
+  [ "Ability " <> Text.unpack ability.name
+  , "Item    " <> maybe "None" (\i -> Text.unpack i.name) item
+  , "Exp     " <> show mon.totalExp
+  ]
+  where
+    Just ability = IM.lookup mon.ability api.abilities
+    item = mon.heldItem >>= \id -> IM.lookup id api.items
+
+strStatMoves api mon =
+  zipWith (\l r -> l <> " | " <> r)
+    do strStats api mon
+    do strMoves api mon <> repeat []
+
+picStats api mon = Pictures
+  [ Text $ unlines $ strMonInfo api mon : "" : strStatMoves api mon <> [""] <> strExtra api mon
+  ]
 

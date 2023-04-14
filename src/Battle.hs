@@ -90,10 +90,10 @@ battle = do
   Battle {..} <- get
 
   when isWild do
-    tell $ "A wild " <> pokemonName api mon2 <> " appeared!"
+    tell $ "A wild " <> pokemonName api mon2.pokemon <> " appeared!"
 
   do let name = "You"
-     tell $ name <> " sent out " <> pokemonName api mon1
+     tell $ name <> " sent out " <> pokemonName api mon1.pokemon
 
   res <- selectAction
   flushParty
@@ -241,7 +241,7 @@ moveSelected move = do
   -- flinch
   if mon1.flinched
   then do
-    tell $ pokemonName api mon1 <> " flinched and couldn't move!"
+    tell $ pokemonName api mon1.pokemon <> " flinched and couldn't move!"
   else do
 
   -- statuses that might prevent the move
@@ -256,7 +256,7 @@ moveSelected move = do
             }
           , ..
           }
-        tell $ pokemonName api mon1 <> " woke up!"
+        tell $ pokemonName api mon1.pokemon <> " woke up!"
         moveSelected' move
       | let -> do
           -- TODO: sleep talk, snore
@@ -268,12 +268,12 @@ moveSelected move = do
               }
             , ..
             }
-          tell $ pokemonName api mon1 <> " is fast asleep"
+          tell $ pokemonName api mon1.pokemon <> " is fast asleep"
 
     Just Paralysis -> do
       roll <- liftIO $ randomRIO paralysisChance
       if roll==1 then do
-        tell $ pokemonName api mon1 <> " couldn't move because it's paralyzed!"
+        tell $ pokemonName api mon1.pokemon <> " couldn't move because it's paralyzed!"
       else do
         moveSelected' move
 
@@ -284,7 +284,7 @@ moveSelected move = do
       let thaw = thawRoll == 1
 
       if not thaw then do
-        tell $ pokemonName api mon1 <> " is frozen"
+        tell $ pokemonName api mon1.pokemon <> " is frozen"
       else do
         put Battle
           { mon1 = mon1
@@ -294,7 +294,7 @@ moveSelected move = do
             }
           , ..
           }
-        tell $ pokemonName api mon1 <> " thawed!"
+        tell $ pokemonName api mon1.pokemon <> " thawed!"
         moveSelected' move
 
     _ -> moveSelected' move
@@ -307,14 +307,14 @@ moveSelected' move = do
     LT -> moveSelected'' move
     EQ -> do
       put Battle { mon1 = mon1 { confusion = -1 }, .. }
-      tell $ pokemonName api mon1 <> " snapped out of its confusion"
+      tell $ pokemonName api mon1.pokemon <> " snapped out of its confusion"
       moveSelected'' move
     GT -> do
       put Battle { mon1 = mon1 { confusion = mon1.confusion - 1 }, .. }
-      tell $ pokemonName api mon1 <> " is confused " <> show mon1.confusion
+      tell $ pokemonName api mon1.pokemon <> " is confused " <> show mon1.confusion
       roll <- liftIO $ randomRIO confusionChance
       if roll == 1 then do
-        tell $ pokemonName api mon1 <> " hit itself in its confusion!"
+        tell $ pokemonName api mon1.pokemon <> " hit itself in its confusion!"
         confusionHit
       else do
         moveSelected'' move
@@ -348,7 +348,7 @@ moveSelected'' move = do
   Battle {..} <- get
 
   let Just m = IM.lookup move.id api.moves
-  tell $ pokemonName api mon1 <> " used " <> Text.unpack m.name
+  tell $ pokemonName api mon1.pokemon <> " used " <> Text.unpack m.name
 
   modifyMove move \m -> m { pp = max 0 (pred m.pp) }
 
@@ -519,15 +519,7 @@ monInfo api right w2 mon = (w3,) $ Pictures
     max    = mon.stats.hp
     lvl    = mon.pokemon.level
     status = mon.pokemon.status
-    name   = pokemonName api mon
-
-pokemonName api mon =
-  case mon.pokemon.nickname of
-    Just nick -> nick
-    Nothing   ->
-      case IM.lookup mon.pokemon.id api.pokemon of
-        Just pok -> Text.unpack pok.name
-        Nothing  -> "unknown"
+    name   = pokemonName api mon.pokemon
 
 line width =
   Text $ replicate width '-'
@@ -845,7 +837,7 @@ runAttackResult = \case
 
   Protected -> do
     Battle {..} <- get
-    tell $ pokemonName api mon2 <> " protected itself"
+    tell $ pokemonName api mon2.pokemon <> " protected itself"
 
   AttackResult {..} -> do
     modify \Battle {..} -> Battle

@@ -8,6 +8,7 @@ import Pokemon.PokeAPI qualified as API
 import Data.IntMap qualified as IM
 import System.Random
 import System.Random.Shuffle
+import Data.Text qualified as Text
 
 type ID  = Int
 type UID = Int -- unique ID
@@ -46,6 +47,11 @@ data PokemonGender
    | Male
    | Genderless
    deriving (Show, Eq, Ord, Enum, Bounded)
+
+genderAbriv = \case
+  Female     -> "F"
+  Male       -> "M"
+  Genderless -> ""
 
 data PokemonStatus
    = Paralysis
@@ -136,4 +142,13 @@ heal api pok = pok
 isAsleep mon = case mon.status of
   Just (Sleep _) -> True
   _ -> False
+
+pokemonName api mon =
+  case mon.nickname of
+    Just nick -> nick
+    Nothing   ->
+      case IM.lookup mon.id api.pokemon of
+        Just pok -> Text.unpack pok.name
+        Nothing  -> "unknown"
+
 
