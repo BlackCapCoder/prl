@@ -11,6 +11,7 @@ import GHC.Generics
 import System.Directory
 import Data.IntMap qualified as IM
 import Pokemon.Stat
+import Pokemon.Level
 
 ----
 
@@ -225,7 +226,7 @@ data PokemonSpecies = PokemonSpecies
    , color                  :: NamedAPIResource
    , shape                  :: Maybe NamedAPIResource
    , evolves_from_species   :: Maybe NamedAPIResource
-   , evolution_chain        :: Maybe APIResource
+   -- , evolution_chain        :: Maybe APIResource
    , habitat                :: Maybe NamedAPIResource
    , names                  :: [Name]
    , pal_park_encounters    :: [PalParkEncounterArea]
@@ -250,21 +251,21 @@ data PokemonSpeciesDexEntry = PokemonSpeciesDexEntry
 
 data PalParkEncounterArea = PalParkEncounterArea
    { base_score :: Int
-   , rate :: Int
-   , area :: NamedAPIResource
+   , rate       :: Int
+   , area       :: NamedAPIResource
    }
    deriving (Show, Eq, Ord)
 
 data FlavorText = FlavorText
    { flavor_text :: Text
-   , language :: NamedAPIResource
-   , version  :: NamedAPIResource
+   , language    :: NamedAPIResource
+   , version     :: NamedAPIResource
    }
    deriving (Show, Eq, Ord)
 
-data APIResource = APIResource
+newtype APIResource = APIResource
    {
-   -- url :: Text
+   url :: Text
    }
    deriving (Show, Eq, Ord)
 
@@ -516,6 +517,9 @@ getAbilityByName PokeAPI {..} name =
 getMoveByName PokeAPI {..} name =
   listToMaybe [ a | a <- toList moves, a.name == name ]
 
+getSpeciesByName PokeAPI {..} name =
+  listToMaybe [ a | a <- toList species, a.name == name ]
+
 getPokemonAbilities api@PokeAPI {..} id = join $ maybeToList do
   pok <- IM.lookup id pokemon
   let as = pok.abilities <&> \a -> a.ability.name
@@ -524,4 +528,18 @@ getPokemonAbilities api@PokeAPI {..} id = join $ maybeToList do
 getPokemonMoves api@PokeAPI {..} (pok :: Pokemon) = do
   pm <- pok.moves
   pure pm
+
+getSpeciesGrowthRate :: PokemonSpecies -> Maybe GrowthRate
+getSpeciesGrowthRate spe = spe.growth_rate >>= \a -> case a.name of
+  "slow"                -> Just Slow
+  "medium-slow"         -> Just MediumSlow
+  "medium"              -> Just MediumFast
+  "fast"                -> Just Fast
+  "slow-then-very-fast" -> Just Erratic
+  "fast-then-very-slow" -> Just Fluctuating
+  _                     -> Nothing
+
+getPokemonGrowthRate api@PokeAPI {..} (pok :: Pokemon) = do
+  spe <- getSpeciesByName api $ pok.species.name
+  getSpeciesGrowthRate spe
 

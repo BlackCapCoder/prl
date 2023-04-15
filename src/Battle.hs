@@ -10,6 +10,7 @@ import Pokemon.PokeAPI qualified as API
 import Pokemon.Pokemon
 import Pokemon.Type as TYPE
 import Pokemon.Stat
+import Pokemon.Level
 import Settings
 import System.Random
 import Prelude hiding (Field)
@@ -99,7 +100,7 @@ battle = do
   do let name = "You"
      tell $ name <> " sent out " <> pokemonName api mon1.pokemon
 
-  res <- selectAction
+  res <- selectAction >>= runBattleAction
 
   -- Grant EVs
   when (res == Won && not settings.noEVs) do
@@ -112,6 +113,7 @@ battle = do
     RanAway -> lift $ World.fullscreenMessage "You ran away"
     Won     -> do
       tell "You won!"
+      giveExp *> flushParty
       drawBattle 0 []
       liftIO acceptInput
     Lost -> do
@@ -138,9 +140,11 @@ updateParty p (x:xs)
   | otherwise      = x : updateParty p xs
 
 updateMon p1 p2 = p2
-  { hp     = p1.hp
-  , status = p1.status
-  , evs    = p1.evs
+  { hp       = p1.hp
+  , status   = p1.status
+  , evs      = p1.evs
+  , totalExp = p1.totalExp
+  , level    = p1.level
   }
 
 cureToxic p = case p.status of
@@ -161,6 +165,26 @@ swapField = do
 
 ----
 
+data BattleAction
+   = UseMove API.Move
+   | Switch  ID
+   | UseItem ID
+   | Run
+
+runBattleAction = \case
+  UseMove move -> moveSelected0 move
+  UseItem item -> useItem item
+  Switch  x    -> switch x
+  Run          -> pure RanAway
+
+useItem _ = do
+  capture
+
+switch _ = do
+  selectAction >>= runBattleAction
+
+----
+
 selectAction = do
   Battle {..} <- get
 
@@ -174,10 +198,10 @@ selectAction = do
     East  | cur == 0 || cur == 2 -> put Battle {actionCursor = cur+1, ..} *> selectAction
     South | cur == 0 || cur == 1 -> put Battle {actionCursor = cur+2, ..} *> selectAction
     BSelect
-      | 0 <- cur -> attackSelected
-      | 1 <- cur -> bagSelected
-      | 2 <- cur -> switchSelected
-      | 3 <- cur -> runSelected
+      | 0 <- cur -> selectMove
+      | 1 <- cur -> pure $ UseItem (-1)
+      | 2 <- cur -> pure $ Switch  (-1)
+      | 3 <- cur -> pure Run
     BCancel
       | isWild -> put Battle {actionCursor = 3, ..} *> selectAction
     _ -> selectAction
@@ -207,7 +231,7 @@ selectMove = do
     East  | cur == 0 || cur == 2, canSelect (cur+1) -> put Battle {moveCursor = cur+1, ..} *> selectMove
     South | cur == 0 || cur == 1, canSelect (cur+2) -> put Battle {moveCursor = cur+2, ..} *> selectMove
     BCancel -> selectAction
-    BSelect -> moveSelected0 $ fst $ moves' !! cur
+    BSelect -> pure $ UseMove $ fst $ moves' !! cur
     _       -> selectMove
 
 ----
@@ -379,12 +403,6 @@ moveSelected'' move = do
 
     pure ()
 
-  -- performMove move
-
-
--- performMove move = do
---   when (move.id == struggleID) struggle
-
 struggle = do
   Battle {..} <- get
   put Battle
@@ -414,18 +432,8 @@ modifyMove move f = do
 
 ----
 
-attackSelected =
-  selectMove
-
-bagSelected =
-  capture
-  -- selectAction
-
-switchSelected =
-  selectAction
-
-runSelected =
-  pure RanAway
+-- bagSelected =
+  -- capture
 
 capture = do
   Battle {..} <- get
@@ -439,7 +447,7 @@ endOfTurn = do
 
   if | mon1.pokemon.hp == 0 -> pure Lost
      | mon2.pokemon.hp == 0 -> pure Won
-     | otherwise            -> selectAction
+     | otherwise            -> selectAction >>= runBattleAction
 
 battleResult = do
   Battle {..} <- get
@@ -907,4 +915,47 @@ runAttackResult = \case
       Super   -> tell "It's super effective!"
       _       -> pure ()
 
+----
+
+-- l  - level of defeated pokemon
+-- lp - level of victorious pokemon
+-- b  - base exp defeated pokemon
+-- s  - number of pokemon that participated and have not fained (unless exp all)
+--
+baseExpGain l lp b s =
+  (b * l)/5 * 1/s * ((2*l + 10)/(l + lp + 10))**2.5 + 1
+
+getExpGain = do
+  World.World {..} <- lift get
+  Battle {..} <- get
+
+  let baseYield = IM.lookup mon2.pokemon.id api.pokemon >>= \pok -> pok.base_experience
+  let baseExp = baseExpGain
+       do fi mon2.pokemon.level
+       do fi mon1.pokemon.level
+       do maybe 0 fi baseYield
+       do 1
+
+  pure baseExp
+
+giveExp = do
+  World.World {..} <- lift get
+  Battle {..} <- get
+  exp <- round <$> getExpGain
+  tell $ pokemonName api mon1.pokemon <> " gained " <> show exp <> " Exp"
+  modify \b -> b
+    { mon1 = b.mon1
+      { pokemon = b.mon1.pokemon
+        { totalExp = b.mon1.pokemon.totalExp + exp
+        , level    = fromMaybe b.mon1.pokemon.level
+                   $ levelFromExp api b.mon1.pokemon
+                   $ b.mon1.pokemon.totalExp + exp
+        }
+      }
+    }
+
+levelFromExp api mon exp = do
+  pok <- IM.lookup mon.id api.pokemon
+  gro <- API.getPokemonGrowthRate api pok
+  pure $ levelAtExp gro exp
 

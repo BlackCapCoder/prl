@@ -4,6 +4,7 @@ import Settings
 import Pokemon.Stat
 import Pokemon.Nature
 import Pokemon.Type
+import Pokemon.Level
 import Pokemon.PokeAPI hiding (PokemonMove, Pokemon)
 import Pokemon.PokeAPI qualified as API
 import Data.IntMap qualified as IM
@@ -115,8 +116,10 @@ createPokemon Settings{..} uid api@PokeAPI {..} id level_range = do
     roll <- randomRIO (0.0, 1.0)
     pure $ roll <= shinyChance
 
+  let Just growth = getPokemonGrowthRate api mon
+
   let mon = Pokemon
-        { totalExp  = 0
+        { totalExp  = totalExpAtLevel growth level
         , eggCycles = 0
         , heldItem  = Nothing
         , evs       = zero
@@ -162,5 +165,4 @@ addEVs add mon = mon { evs = execState go mon.evs } where
     modify \evs -> evs { spA = min 252 $ evs.spA + min (510 - sum evs) add.spA, hp =evs.hp  }
     modify \evs -> evs { spD = min 252 $ evs.spD + min (510 - sum evs) add.spD, hp =evs.hp  }
     modify \evs -> evs { spe = min 252 $ evs.spe + min (510 - sum evs) add.spe, hp =evs.hp  }
-
 

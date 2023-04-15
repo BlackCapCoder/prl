@@ -16,6 +16,7 @@ import Pokemon.PokeAPI qualified as API
 import Pokemon.Pokemon
 import Pokemon.Nature
 import Pokemon.Stat
+import Pokemon.Level
 import Pokemon.Type as TYPE
 import Settings
 import Weighted qualified
@@ -570,11 +571,16 @@ sstrStats api mon =
 sstrExtra api mon =
   [ "Ability " <> sstr do Text.unpack ability.name
   , "Item    " <> sstr do maybe "None" (\i -> Text.unpack i.name) item
-  , "Exp     " <> sstr do show mon.totalExp
+  , "Exp     " <> sstr do show mon.totalExp <> "/" <> show expNext
   ]
   where
     Just ability = IM.lookup mon.ability api.abilities
     item = mon.heldItem >>= \id -> IM.lookup id api.items
+
+    Just pok = IM.lookup mon.id api.pokemon
+    Just gro = API.getPokemonGrowthRate api pok
+
+    expNext = totalExpAtLevel gro $ min 100 $ succ $ mon.level
 
 sstrStatMoves api mon =
   zipWith (\l r -> l <> sstr " | " <> r)
