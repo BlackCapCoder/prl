@@ -2,6 +2,7 @@ module StyledString where
 
 import Picture
 import GHC.Exts (IsString (..))
+import Data.List qualified as L
 
 
 newtype StyledString = StyledString [FILL]
@@ -46,3 +47,9 @@ unsstr (StyledString s) =
 
 sshow =
   sstr . show
+
+----
+
+sunwords =
+  mconcat . L.intersperse " "
+

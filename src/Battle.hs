@@ -23,10 +23,15 @@ import Data.Text qualified as Text
 import Data.IntMap qualified as IM
 import World qualified
 import Data.List (elem)
+import StyledString
 
 ----
 
-healthBarWidth  = 20
+healthBarWidth    = 40
+redBarTreshold    = 0.25
+yellowBarTreshold = 0.5
+
+----
 
 gutsID         = 62
 adaptabilityID = 91
@@ -413,13 +418,19 @@ attackSelected =
   selectMove
 
 bagSelected =
-  selectAction
+  capture
+  -- selectAction
 
 switchSelected =
   selectAction
 
 runSelected =
   pure RanAway
+
+capture = do
+  Battle {..} <- get
+  lift $ modify \w -> w { World.party = World.party w <> [mon2.pokemon] }
+  pure Won
 
 ----
 
@@ -489,30 +500,39 @@ draw pic = do
 
 ----
 
-redBarTreshold = 0.25
-
-healthBar width hp max = Pictures
-  [ Text $ "[" <> replicate (width - 2) ' ' <> "]"
-  , Translate 1 0
-  $ Fill Unset None (Set color) None
-  $ Text $ replicate boxes '#'
-  , Translate (fi boxes + 1) 0
-  $ Text $ replicate dashes '-'
+healthBar' width hp max dmg = mconcat
+  [ "["
+  , fg color $ sstr $ replicate boxes '#'
+  , fg gray  $ sstr $ replicate slashes '#'
+  , sstr $ replicate dashes  ' '
+  , "]"
+  -- , " ", sshow hp, "/", sshow max
   ]
   where
     perc = fi hp / fi max
-    color | perc <= redBarTreshold = RGB 255 0 0
-          | otherwise              = RGB 0 255 0
+    color
+      | perc <= redBarTreshold    = RGB 255 0   0
+      | perc <= yellowBarTreshold = RGB 255 255 0
+      | otherwise                 = RGB 0   255 0
 
-    boxes  = floor $ fi (width - 2) * perc
-    dashes = width - 2 - boxes
+    gray = RGB 64 64 64
+
+    dmgperc = fi dmg / fi max
+
+    boxes   = ceiling $ fi (width - 2) * perc
+    slashes = ceiling $ fi (width - 2) * dmgperc
+    dashes  = width - 2 - boxes - slashes
+
+
+healthBar width hp max dmg =
+  slines2pic [healthBar' width hp max dmg]
 
 monInfo api right w2 mon = (w3,) $ Pictures
   [ if right then Blank else Text name
   , (if right then Prelude.id else Translate (fi (length name + 1)) 0)
   $ Pictures
     [ Text lvlStr
-    , Translate w1 0 $ healthBar w2 hp max
+    , Translate w1 0 $ healthBar w2 hp max dmg
     , case status of
         Nothing -> Blank
         Just s  -> Translate (w1+fi w2+1) 0
@@ -531,6 +551,7 @@ monInfo api right w2 mon = (w3,) $ Pictures
 
     hp     = mon.pokemon.hp
     max    = mon.stats.hp
+    dmg    = mon.lastDamage
     lvl    = mon.pokemon.level
     status = mon.pokemon.status
     name   = pokemonName api mon.pokemon
@@ -862,7 +883,9 @@ runAttackResult = \case
       { mon2 = mon2
         { pokemon = mon2.pokemon
           { hp = max 0 $ mon2.pokemon.hp - damage
+          , level = mon2.pokemon.level
           }
+        , lastDamage = min mon2.pokemon.hp damage
         }
       , ..
       }

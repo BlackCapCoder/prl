@@ -86,8 +86,6 @@ createPokemon Settings{..} uid api@PokeAPI {..} id level_range = do
   let as = getPokemonAbilities api id
   ability <- randomRIO (0, length as - 1) <&> \i -> (as !! i).id
 
-  let stats = calcStat base level nature zero zero
-
   let ms = mapMaybe (\pm -> getMoveByName api pm.move.name)
          $ mon.moves & filter \pm ->
              pm.version_group_details & any \pmv ->
@@ -113,19 +111,24 @@ createPokemon Settings{..} uid api@PokeAPI {..} id level_range = do
     spe <- randomRIO (0, 31)
     pure Stat {..}
 
-  pure Pokemon
-    { totalExp  = 0
-    , shiny     = False
-    , eggCycles = 0
-    , heldItem  = Nothing
-    , evs       = zero
-    , ivs       = ivs
-    , happiness = 0
-    , nickname  = Nothing
-    , hp        = stats.hp
-    , status    = Nothing
-    , ..
-    }
+  shiny <- do
+    roll <- randomRIO (0.0, 1.0)
+    pure $ roll <= shinyChance
+
+  let mon = Pokemon
+        { totalExp  = 0
+        , eggCycles = 0
+        , heldItem  = Nothing
+        , evs       = zero
+        , ivs       = ivs
+        , happiness = 0
+        , nickname  = Nothing
+        , hp        = (getStats api mon).hp
+        , status    = Nothing
+        , ..
+        }
+
+  pure mon
 
 getStats :: PokeAPI -> Pokemon -> Stat Int
 getStats api Pokemon {..} = stats
@@ -145,13 +148,11 @@ isAsleep mon = case mon.status of
   Just (Sleep _) -> True
   _ -> False
 
-pokemonName api mon =
-  case mon.nickname of
-    Just nick -> nick
-    Nothing   ->
-      case IM.lookup mon.id api.pokemon of
-        Just pok -> Text.unpack pok.name
-        Nothing  -> "unknown"
+pokemonName api mon
+  | mon.eggCycles > 0                         = "egg"
+  | Just nick <- mon.nickname                 = nick
+  | Just pok  <- IM.lookup mon.id api.pokemon = Text.unpack pok.name
+  | otherwise = "UNKNOWN"
 
 addEVs add mon = mon { evs = execState go mon.evs } where
   go = do

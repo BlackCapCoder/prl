@@ -30,6 +30,7 @@ data Settings = Settings
    , paralysisChance :: Float -- chance of becomming fully paralyzed
    , thawChance      :: Float -- chance of thawing from a freeze
    , critMultiplier  :: Float -- damange multiplier for critical hits
+   , shinyChance     :: Float -- chance of a pokemon being shiny
    }
 
 defaultSettings = Settings
@@ -50,5 +51,6 @@ defaultSettings = Settings
   , paralysisChance   = 1/2     -- implemented
   , thawChance        = 1/5     -- implemented
   , critMultiplier    = 1.5     -- implemented (this is 2.0 in some games)
+  , shinyChance       = 1/4096
   }
 

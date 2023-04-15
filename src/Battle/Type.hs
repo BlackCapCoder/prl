@@ -43,6 +43,7 @@ data BattleMon = BattleMon
    , flinched    :: Bool
    , confusion   :: Countdown
    , embargo     :: Countdown
+   , lastDamage  :: Int
    }
 
 newBattleMon api pok = BattleMon
@@ -76,6 +77,7 @@ newBattleMon api pok = BattleMon
   , flinched    = False
   , confusion   = -1
   , embargo     = 0
+  , lastDamage  = 0
   }
 
 ----

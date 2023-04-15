@@ -52,6 +52,9 @@ encounterTable = Weighted.Weighted
 -- How often to take damage from poison in the overworld
 poisonTickFreq = 10
 
+-- How slow to hatch eggs
+eggTickFreq = 10
+
 ----
 
 initialWorld = do
@@ -345,8 +348,7 @@ pokemonMenu = do
 
   xs <- lift $ forM (zip [0..] party) \(ix, mon) -> do
     let Just pok = IM.lookup mon.id api.pokemon
-    let name | Just n <- mon.nickname = n
-             | otherwise              = Text.unpack pok.name
+    let name = pokemonName api mon
     let stats = getStats api mon
     pure $ (,ix) $ unwords
       [ name
@@ -357,9 +359,14 @@ pokemonMenu = do
 
   choose xs >>= \case
     Nothing -> pure ()
-    Just ix -> do
-      lift $ draw $ picStats api $ party !! ix
-      void $ lift $ liftIO acceptInput
+    Just ix -> select
+      [ "Info" --> do
+          lift $ draw $ picStats api $ party !! ix
+          void $ lift $ liftIO acceptInput
+      , "Switch" --> lift do
+          let (ls, r:rs) = splitAt ix party
+          put World {party = r:ls ++ rs, ..}
+      ]
 
   pure ()
 
@@ -395,7 +402,7 @@ play' = do
               moved
               case t of
                 Grass -> walkedInGrass
-                _     -> tickPoison
+                _     -> tickSteps
             Just PC -> runDialogue pcDialogue
             _ -> pure ()
 
@@ -419,7 +426,7 @@ walkedInGrass = do
   if roll < encounterRate then
     encounter encounterTable
   else
-    tickPoison
+    tickSteps
 
 encounter table = do
   liftIO (Weighted.roll table) >>= \case
@@ -453,6 +460,11 @@ restoreHeldItems old0 new0 = foldr go new0 old0 where
     | otherwise = mon : put uid item ms
   put _ _ ms = ms
 
+
+tickSteps = do
+  tickEggs
+  tickPoison
+
 tickPoison = do
   World {..} <- get
   when (mod stepCount poisonTickFreq == 0) do
@@ -471,6 +483,17 @@ tickPoison = do
       | kill       = mon { hp = 0, status=Nothing } : go kill ms
       | otherwise  = mon { hp = 1, status=Nothing } : go kill ms
     go _ ms = ms
+
+tickEggs = do
+  World {..} <- get
+  when (mod stepCount eggTickFreq == 0) do
+  party' <- forM party \mon -> do
+    when (mon.eggCycles == 1) do
+      let Just pok = IM.lookup mon.id api.pokemon
+      let name     = Text.unpack pok.name
+      runDialogue $ nag $ "Your egg hatched into a " <> name <> "!"
+    pure mon { eggCycles = max 0 $ pred mon.eggCycles }
+  put World {party = party', ..}
 
 ----
 
