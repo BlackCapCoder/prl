@@ -143,9 +143,15 @@ heal :: PokeAPI -> Pokemon -> Pokemon
 heal api pok = pok
   { status = Nothing
   , hp     = stats.hp
+  , moves  = map restorePP pok.moves
   }
   where
     stats = getStats api pok
+
+    restorePP m = m { pp = pp_max, pp_ups = m.pp_ups }
+      where
+        Just amove = IM.lookup m.id api.moves
+        pp_max = amove.pp
 
 isAsleep mon = case mon.status of
   Just (Sleep _) -> True

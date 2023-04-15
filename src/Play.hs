@@ -67,8 +67,8 @@ initialWorld = do
   Just (h, w) <- getTerminalSize
   let world = World
         { wm             = worldMap
-        , pl             = Pos 4 (V2 4 3)
-        -- , pl             = Pos 7 (V2 20 10)
+        -- , pl             = Pos 4 (V2 4 3)
+        , pl             = Pos 7 (V2 20 10)
         , menuCursor     = 0
         , twidth         = w
         , theight        = h
@@ -542,7 +542,7 @@ sstrMoves api mon =
       ]
     | move <- mon.moves
     , info <- maybeToList $ IM.lookup move.id api.moves
-    , let ty = TYPE.typeFromName $ Text.unpack $ info._type.name
+    , let ty = maybe NON (\t -> TYPE.typeFromName t.name) info._type
     ]
   where
     cat = \case

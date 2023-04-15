@@ -113,7 +113,8 @@ battle = do
     RanAway -> lift $ World.fullscreenMessage "You ran away"
     Won     -> do
       tell "You won!"
-      giveExp *> flushParty
+      when grantExperience do
+        giveExp *> flushParty
       drawBattle 0 []
       liftIO acceptInput
     Lost -> do
@@ -145,6 +146,7 @@ updateMon p1 p2 = p2
   , evs      = p1.evs
   , totalExp = p1.totalExp
   , level    = p1.level
+  , moves    = p1.moves -- TODO: Transform/mimic may change moves!
   }
 
 cureToxic p = case p.status of
@@ -222,6 +224,9 @@ selectMove = do
   let opts = moves' <&> \(m,pp) -> pp <> Text.unpack m.name
 
   let canSelect n = n < length opts
+
+  when (null moves') do
+    tell $ "No moves! " <> show (null moves)
 
   drawBattle cur opts
 
@@ -396,7 +401,7 @@ moveSelected'' move = do
         "special"  -> Special
         _          -> Status
 
-  let ty = TYPE.typeFromName m._type.name
+  let ty = maybe NON (\t -> TYPE.typeFromName t.name) m._type
 
   when (cat /= Status) do
     runAttackResult =<< basicAttack move.id ty (cat == Physical) 50 mon1 mon2 False
@@ -941,21 +946,47 @@ getExpGain = do
 giveExp = do
   World.World {..} <- lift get
   Battle {..} <- get
+  when (mon1.pokemon.level < 100) do
   exp <- round <$> getExpGain
   tell $ pokemonName api mon1.pokemon <> " gained " <> show exp <> " Exp"
-  modify \b -> b
-    { mon1 = b.mon1
-      { pokemon = b.mon1.pokemon
-        { totalExp = b.mon1.pokemon.totalExp + exp
-        , level    = fromMaybe b.mon1.pokemon.level
-                   $ levelFromExp api b.mon1.pokemon
-                   $ b.mon1.pokemon.totalExp + exp
-        }
-      }
-    }
 
-levelFromExp api mon exp = do
-  pok <- IM.lookup mon.id api.pokemon
-  gro <- API.getPokemonGrowthRate api pok
-  pure $ levelAtExp gro exp
+  let Just pok = IM.lookup mon1.pokemon.id api.pokemon
+  let Just gro = API.getPokemonGrowthRate api pok
+
+  -- We level-up one level at a time in case there are
+  -- new moves to learn
+  --
+  exp & fix \loop exp -> do
+    Battle {..} <- get
+    when (exp > 0 && mon1.pokemon.level < 100) do
+
+    let expNext = totalExpAtLevel gro $ succ mon1.pokemon.level
+    let dt      = expNext - mon1.pokemon.totalExp
+
+    if expNext - mon1.pokemon.totalExp <= exp then do
+      let lvl = succ mon1.pokemon.level
+      put Battle
+        { mon1 = mon1
+          { pokemon = mon1.pokemon
+            { level    = lvl
+            , totalExp = expNext
+            }
+          }
+        , ..
+        }
+      tell $ pokemonName api mon1.pokemon <> " is now level " <> show lvl
+      onLevelUp
+      loop $ exp - dt
+    else do
+      put Battle
+        { mon1 = mon1
+          { pokemon = mon1.pokemon
+            { totalExp = mon1.pokemon.totalExp + exp
+            }
+          }
+        , ..
+        }
+
+onLevelUp = do
+  pure ()
 

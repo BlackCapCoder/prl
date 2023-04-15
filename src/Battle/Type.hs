@@ -155,6 +155,7 @@ data Battle = Battle
    , isWild          :: Bool
    , actionCursor    :: Int
    , moveCursor      :: Int
+   , grantExperience :: Bool
    }
 
 newBattle api party1 party2 wild = Battle
@@ -165,6 +166,7 @@ newBattle api party1 party2 wild = Battle
   , isWild = wild
   , actionCursor = 0
   , moveCursor = 0
+  , grantExperience = True
   , ..
   }
 

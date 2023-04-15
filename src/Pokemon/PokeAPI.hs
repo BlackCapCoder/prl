@@ -346,9 +346,9 @@ data Move = Move
    , pp           :: Int
    , priority     :: Int
    , power        :: Maybe Int
-   , accuracy     :: Int
+   , accuracy     :: Maybe Int
    , damage_class :: NamedAPIResource
-   , _type        :: NamedAPIResource
+   , _type        :: Maybe NamedAPIResource
    }
    deriving (Show, Eq, Ord)
 
