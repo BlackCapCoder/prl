@@ -29,6 +29,7 @@ data Settings = Settings
    , confusionChance :: Float -- chance of hitting yourself during confusion
    , paralysisChance :: Float -- chance of becomming fully paralyzed
    , thawChance      :: Float -- chance of thawing from a freeze
+   , critMultiplier  :: Float -- damange multiplier for critical hits
    }
 
 defaultSettings = Settings
@@ -48,5 +49,6 @@ defaultSettings = Settings
   , confusionChance   = 1/3     -- implemented
   , paralysisChance   = 1/2     -- implemented
   , thawChance        = 1/5     -- implemented
+  , critMultiplier    = 1.5     -- implemented (this is 2.0 in some games)
   }
 

@@ -734,7 +734,7 @@ basicAttack moveID ty isPhysical pow mon1 mon2 neverCrit = do
         | otherwise     = 1.0
 
   let multCritical
-        | isCritical = 1.5
+        | isCritical = settings.critMultiplier
         | otherwise  = 1.0
 
   multRandom <- if settings.noDamageRanges
