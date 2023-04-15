@@ -25,6 +25,7 @@ import Data.IntMap qualified as IM
 import World qualified
 import Data.List (elem)
 import StyledString
+import Data.Vector qualified as V
 
 ----
 
@@ -100,34 +101,77 @@ battle = do
   do let name = "You"
      tell $ name <> " sent out " <> pokemonName api mon1.pokemon
 
-  res <- selectAction >>= runBattleAction
+  selectAction >>= runBattleAction >>= doRes
+
+doRes res = do
+  Battle {..} <- get
+  World.World {..} <- lift get
 
   -- Grant EVs
   when (res == Won && not settings.noEVs) do
     let Just evs = API.getEvYield api mon2.pokemon.id
     modify \b -> b { mon1 = b.mon1 { pokemon = addEVs evs b.mon1.pokemon } }
 
-  flushParty
+  flushMon
 
   case res of
     RanAway -> lift $ World.fullscreenMessage "You ran away"
     Won     -> do
       tell "You won!"
       when grantExperience do
-        giveExp *> flushParty
+        giveExp *> flushMon
       drawBattle 0 []
       liftIO acceptInput
+      flushParty
     Lost -> do
-      tell "You lost!"
-      drawBattle 0 []
-      liftIO acceptInput
-      lift World.whiteOut
+      onPokemonFainted
 
+onPokemonFainted = do
+  Battle {..} <- get
+  World.World {..} <- lift get
+
+  tell $ pokemonName api mon1.pokemon <> " fainted"
+  drawBattle 0 []
+  liftIO acceptInput
+  flushMon
+
+  if all (\m -> m.hp == 0) party1 then do
+    onLoss
+  else do
+
+  Switch mon <- selectSwitch False
+
+  modify \w -> w
+    { mon1       = newBattleMon api mon
+    , moveCursor = 0
+    }
+
+  tell $ pokemonName api mon <> " was sent out!"
+
+  selectAction >>= runBattleAction >>= doRes
+
+onLoss = do
+  flushMon
+  flushParty
+  lift World.whiteOut
+
+debug x = do
+  Battle {..} <- get
+  World.World {..} <- lift get
+  tell $ unwords
+    [ x, "|"
+    , show (mon1.pokemon.uid, mon1.pokemon.hp)
+    , show $ party1 <&> \m -> (m.uid, m.hp)
+    ]
+
+----
 
 tell msg = do
   modify \w -> w { log = msg : w.log }
 
-----
+flushMon = do
+  Battle {..} <- get
+  modify \b -> b { party1 = updateParty mon1.pokemon b.party1 }
 
 flushParty = do
   Battle {..} <- get
@@ -169,7 +213,7 @@ swapField = do
 
 data BattleAction
    = UseMove API.Move
-   | Switch  ID
+   | Switch  Pokemon
    | UseItem ID
    | Run
 
@@ -182,8 +226,30 @@ runBattleAction = \case
 useItem _ = do
   capture
 
-switch _ = do
-  selectAction >>= runBattleAction
+switch mon = do
+  Battle {..} <- get
+  World.World {..} <- lift get
+
+  tell $ pokemonName api mon1.pokemon <> " withdrew!"
+
+  modify \b -> b { mon1 = b.mon1 { pokemon = cureToxic b.mon1.pokemon } }
+  flushMon
+  modify \w -> w
+    { mon1       = newBattleMon api mon
+    , moveCursor = 0
+    }
+
+  tell $ pokemonName api mon <> " was sent out!"
+
+  drawBattle 0 []
+  liftIO acceptInput
+
+  move <- selectRandomMove mon2
+  swapField
+  performMove move
+  swapField
+  endOfTurn
+
 
 ----
 
@@ -194,6 +260,7 @@ selectAction = do
 
   drawBattle cur ["Attack", "Bag", "Switch", "Run"]
 
+
   liftIO getBattleMenuInput >>= \case
     North | cur == 2 || cur == 3 -> put Battle {actionCursor = cur-2, ..} *> selectAction
     West  | cur == 1 || cur == 3 -> put Battle {actionCursor = cur-1, ..} *> selectAction
@@ -202,7 +269,7 @@ selectAction = do
     BSelect
       | 0 <- cur -> selectMove
       | 1 <- cur -> pure $ UseItem (-1)
-      | 2 <- cur -> pure $ Switch  (-1)
+      | 2 <- cur -> selectSwitch True
       | 3 <- cur -> pure Run
     BCancel
       | isWild -> put Battle {actionCursor = 3, ..} *> selectAction
@@ -239,6 +306,33 @@ selectMove = do
     BSelect -> pure $ UseMove $ fst $ moves' !! cur
     _       -> selectMove
 
+selectSwitch canCancel = do
+  World.World {..} <- lift get
+  Battle      {..} <- get
+
+  let f mon = mon.uid /= mon1.pokemon.uid && mon.hp > 0
+  let mons  = V.fromList $ filter f party1
+
+  if null mons then selectAction else do
+
+  tell $ show $ mons <&> \m -> (m.uid, m.hp)
+
+  0 & fix \loop cur0 -> do
+    let cur = mod cur0 (V.length mons)
+    let f i | i == cur = style Picture.Bold | let = Prelude.id
+    draw $ slines2pic
+      [ f i $ sstr $ pokemonName api $ mons V.! i
+      | i <- [0..V.length mons - 1]
+      ]
+
+    liftIO getMenuInput >>= \case
+      CursorUp   -> loop (pred cur0)
+      CursorDown -> loop (succ cur0)
+      Select     -> pure $ Switch $ mons V.! cur
+      Cancel
+        | canCancel -> selectAction
+        | otherwise -> loop cur0
+
 ----
 
 moveSelected0 move = do
@@ -254,29 +348,29 @@ moveSelected0 move = do
     EQ -> liftIO randomIO
 
   if goFirst then do
-    moveSelected move
+    performMove move
     battleResult >>= \case
       Just r  -> pure r
       Nothing -> do
         drawBattle 0 []
         liftIO acceptInput
         swapField
-        moveSelected move2
+        performMove move2
         swapField
         endOfTurn
   else do
     swapField
-    moveSelected move2
+    performMove move2
     swapField
     battleResult >>= \case
       Just r  -> pure r
       Nothing -> do
         drawBattle 0 []
         liftIO acceptInput
-        moveSelected move
+        performMove move
         endOfTurn
 
-moveSelected move = do
+performMove move = do
   World.World {..} <- lift get
   Battle {..} <- get
 
@@ -299,7 +393,7 @@ moveSelected move = do
           , ..
           }
         tell $ pokemonName api mon1.pokemon <> " woke up!"
-        moveSelected' move
+        performMove' move
       | let -> do
           -- TODO: sleep talk, snore
           put Battle
@@ -317,7 +411,7 @@ moveSelected move = do
       if roll <= settings.paralysisChance then do
         tell $ pokemonName api mon1.pokemon <> " couldn't move because it's paralyzed!"
       else do
-        moveSelected' move
+        performMove' move
 
     Just Freeze -> do
       thawRoll <- liftIO $ randomRIO (0.0, 1.0)
@@ -337,21 +431,21 @@ moveSelected move = do
           , ..
           }
         tell $ pokemonName api mon1.pokemon <> " thawed!"
-        moveSelected' move
+        performMove' move
 
-    _ -> moveSelected' move
+    _ -> performMove' move
 
-moveSelected' move = do
+performMove' move = do
   World.World {..} <- lift get
   Battle {..} <- get
 
   -- confusion
   case compare mon1.confusion 0 of
-    LT -> moveSelected'' move
+    LT -> performMove'' move
     EQ -> do
       put Battle { mon1 = mon1 { confusion = -1 }, .. }
       tell $ pokemonName api mon1.pokemon <> " snapped out of its confusion"
-      moveSelected'' move
+      performMove'' move
     GT -> do
       put Battle { mon1 = mon1 { confusion = mon1.confusion - 1 }, .. }
       tell $ pokemonName api mon1.pokemon <> " is confused " <> show mon1.confusion
@@ -360,7 +454,7 @@ moveSelected' move = do
         tell $ pokemonName api mon1.pokemon <> " hit itself in its confusion!"
         confusionHit
       else do
-        moveSelected'' move
+        performMove'' move
 
 confusionHit = do
 
@@ -385,7 +479,7 @@ confusionHit = do
     , ..
     }
 
-moveSelected'' move = do
+performMove'' move = do
   -- attract
 
   World.World {..} <- lift get

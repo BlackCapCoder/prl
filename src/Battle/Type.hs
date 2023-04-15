@@ -160,8 +160,8 @@ data Battle = Battle
 
 newBattle api party1 party2 wild = Battle
   { field = newField
-  , mon1  = newBattleMon api (head party1)
-  , mon2  = newBattleMon api (head party2)
+  , mon1  = newBattleMon api sendOut1
+  , mon2  = newBattleMon api sendOut2
   , log   = []
   , isWild = wild
   , actionCursor = 0
@@ -169,4 +169,7 @@ newBattle api party1 party2 wild = Battle
   , grantExperience = True
   , ..
   }
+  where
+    sendOut1:_ = dropWhile (\m -> m.hp < 1) party1
+    sendOut2:_ = dropWhile (\m -> m.hp < 1) party2
 

@@ -34,6 +34,9 @@ import Data.Text               qualified as Text
 import StyledString
 import Data.List (intercalate, intersperse)
 
+import Data.Vector         qualified as V
+import Data.Vector.Mutable qualified as MV
+
 
 -- After an encounter, minimum number of turns before the next encounter
 encounterCooldown = 10
@@ -62,7 +65,10 @@ initialWorld = do
   let settings = defaultSettings
 
   api <- API.getPokeAPI
-  mon <- createPokemon settings 0 api 1 (5, 5)
+
+  mon1 <- createPokemon settings 0 api 1 (5, 5)
+  mon2 <- createPokemon settings 1 api 4 (5, 5)
+  mon3 <- createPokemon settings 2 api 7 (5, 5)
 
   Just (h, w) <- getTerminalSize
   let world = World
@@ -77,10 +83,10 @@ initialWorld = do
         , bagItems       = mempty & IM.insert 0 1
         , pcItems        = mempty & IM.insert 1 1
         , api            = api
-        , party          = [mon { status=Nothing }]
+        , party          = [mon1, mon2, mon3]
         , respawnLoc     = pl world
         , encounterGraze = 0
-        , unique         = 1
+        , unique         = 3
         , settings       = settings
         , stepCount      = 0
         }
@@ -361,15 +367,48 @@ pokemonMenu = do
   choose xs >>= \case
     Nothing -> pure ()
     Just ix -> select
-      [ "Info" --> do
-          lift $ draw $ picStats api $ party !! ix
-          void $ lift $ liftIO acceptInput
+      [ "Info" --> lift do
+          party' <- pokemonInfoScreen api (V.fromList party) ix Nothing Nothing
+          put World {party = V.toList party', ..}
       , "Switch" --> lift do
           let (ls, r:rs) = splitAt ix party
           put World {party = r:ls ++ rs, ..}
       ]
 
   pure ()
+
+pokemonInfoScreen api party cur0 mcur1 mcur2 = do
+  let cur = mod cur0 $ V.length party
+  draw $ picStats api (party V.! cur) mcur1 mcur2
+
+  inp <- liftIO getMenuInput
+
+  case mcur1 of
+    Nothing -> case inp of
+      CursorUp   -> pokemonInfoScreen api party (pred cur) mcur1 mcur2
+      CursorDown -> pokemonInfoScreen api party (succ cur) mcur1 mcur2
+      Select     -> pokemonInfoScreen api party cur (Just 0) mcur2
+      Cancel     -> pure party
+    Just cur1
+      | let f i = mod i $ length $ (party V.! cur).moves ->
+      case mcur2 of
+        Nothing -> case inp of
+          CursorUp   -> pokemonInfoScreen api party cur (Just $ f $ pred cur1) mcur2
+          CursorDown -> pokemonInfoScreen api party cur (Just $ f $ succ cur1) mcur2
+          Cancel     -> pokemonInfoScreen api party cur Nothing mcur2
+          Select     -> pokemonInfoScreen api party cur mcur1 (Just cur1)
+        Just cur2 -> case inp of
+          CursorUp   -> pokemonInfoScreen api party cur mcur1 (Just $ f $ pred cur2)
+          CursorDown -> pokemonInfoScreen api party cur mcur1 (Just $ f $ succ cur2)
+          Cancel     -> pokemonInfoScreen api party cur mcur1 Nothing
+          Select     -> do
+            let v1 = V.fromList $ (party V.! cur).moves
+            let v2 = V.update v1 $ V.fromList [(cur1, v1 V.! cur2), (cur2, v1 V.! cur1)]
+            let moves' = V.toList v2
+            let mon' = (party V.! cur) { moves = moves' }
+            let party' = V.update party $ V.fromList [(cur, mon')]
+
+            pokemonInfoScreen api party' cur mcur1 Nothing
 
 ----
 
@@ -531,9 +570,9 @@ pad n str =
 spad n (StyledString str) =
   StyledString str <> StyledString (replicate (n - length str) mempty)
 
-sstrMoves api mon =
+sstrMoves api mon cur1 cur2 =
   "PP    typ cat pwr Move" : "" :
-    [ mconcat $ intersperse " "
+    [ sty $ mconcat $ intersperse " "
       [ sstr $ pad 5 $ show move.pp <> "/" <> show info.pp
       , fg (typeColor ty) $ sshow ty
       , cat info.damage_class.name
@@ -543,6 +582,10 @@ sstrMoves api mon =
     | move <- mon.moves
     , info <- maybeToList $ IM.lookup move.id api.moves
     , let ty = maybe NON (\t -> TYPE.typeFromName t.name) info._type
+    | i <- [0..]
+    , let sty | Just j <- cur1, i==j = style Picture.Bold
+              | Just j <- cur2, i==j = style Picture.Bold
+              | let = Prelude.id
     ]
   where
     cat = \case
@@ -582,13 +625,13 @@ sstrExtra api mon =
 
     expNext = totalExpAtLevel gro $ min 100 $ succ $ mon.level
 
-sstrStatMoves api mon =
+sstrStatMoves api mon cur1 cur2 =
   zipWith (\l r -> l <> sstr " | " <> r)
     do sstrStats api mon
-    do sstrMoves api mon <> repeat mempty
+    do sstrMoves api mon cur1 cur2 <> repeat mempty
 
-picStats api mon = Pictures
-  [ slines2pic $ sstrMonInfo api mon : mempty : sstrStatMoves api mon
+picStats api mon cur1 cur2 = Pictures
+  [ slines2pic $ sstrMonInfo api mon : mempty : sstrStatMoves api mon cur1 cur2
               <> [mempty] <> sstrExtra api mon
   -- , Text $ unlines $ strMonInfo api mon : "" : strStatMoves api mon <> [""] <> strExtra api mon
   ]
