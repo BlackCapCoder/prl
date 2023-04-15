@@ -101,45 +101,116 @@ battle = do
   do let name = "You"
      tell $ name <> " sent out " <> pokemonName api mon1.pokemon
 
-  selectAction >>= runBattleAction >>= doRes
+  mainLoop
 
-doRes res = do
+  pause
+  flushMon
+  flushParty
+
+  Battle {party1} <- get
+  let loss = all (\m -> m.hp == 0) party1
+
+  when loss do
+    lift World.whiteOut
+
+----
+
+data BattleAction
+   = UseMove API.Move
+   | Switch  Pokemon
+   | UseItem ID
+   | Run
+
+data BattleResult
+   = Won
+   | Lost
+   | RanAway
+   deriving Eq
+
+
+mainLoop = do
+  World.World {settings, api} <- lift get
   Battle {..} <- get
-  World.World {..} <- lift get
+
+  -- Select actions
+  userAction <- selectAction
+  foeAction  <- UseMove <$> selectRandomMove mon2
+
+  -- TODO: handle speed
+
+  res1 <- handleBattleAction userAction
+
+  case res1 of
+
+    Just RanAway ->
+      tell "You successfully ran away"
+
+    Just Lost -> do
+      continue <- onAllyDefeated
+      when continue mainLoop
+
+    Just Won -> do
+      continue <- onFoeDefeated
+      when continue mainLoop
+
+    Nothing -> do
+      pause
+      swapField
+      res2 <- handleBattleAction foeAction
+      swapField
+
+      case res2 of
+        Just RanAway -> do
+          tell $ "The opposing " <> pokemonName api mon2.pokemon <> " ran away!"
+        Just Lost -> do
+          continue <- onFoeDefeated
+          when continue mainLoop
+        Just Won -> do
+          continue <- onAllyDefeated
+          when continue mainLoop
+        Nothing ->
+          mainLoop
+
+----
+
+onFoeDefeated = do
+  World.World {settings, api} <- lift get
+  Battle      {..}            <- get
+
+  tell $ "The opposing " <> pokemonName api mon2.pokemon <> " fainted"
+
+  -- Grant expreience
+  when grantExperience do
+    giveExp
 
   -- Grant EVs
-  when (res == Won && not settings.noEVs) do
+  unless settings.noEVs do
     let Just evs = API.getEvYield api mon2.pokemon.id
     modify \b -> b { mon1 = b.mon1 { pokemon = addEVs evs b.mon1.pokemon } }
 
   flushMon
+  pure False -- continue?
 
-  case res of
-    RanAway -> lift $ World.fullscreenMessage "You ran away"
-    Won     -> do
-      tell "You won!"
-      when grantExperience do
-        giveExp *> flushMon
-      drawBattle 0 []
-      liftIO acceptInput
-      flushParty
-    Lost -> do
-      onPokemonFainted
-
-onPokemonFainted = do
-  Battle {..} <- get
-  World.World {..} <- lift get
-
-  tell $ pokemonName api mon1.pokemon <> " fainted"
-  drawBattle 0 []
-  liftIO acceptInput
+onAllyDefeated = do
   flushMon
 
-  if all (\m -> m.hp == 0) party1 then do
-    onLoss
-  else do
+  Battle {mon1,party1} <- get
+  World.World {settings, api} <- lift get
 
-  Switch mon <- selectSwitch False
+  let continue = not $ all (\m -> m.hp == 0) party1
+
+  tell $ pokemonName api mon1.pokemon <> " fainted"
+
+  when continue do
+    pause
+    forcedSwitch
+
+  pure continue
+
+forcedSwitch = do
+  World.World {settings, api} <- lift get
+
+  Just mon <- selectSwitch False
 
   modify \w -> w
     { mon1       = newBattleMon api mon
@@ -148,23 +219,45 @@ onPokemonFainted = do
 
   tell $ pokemonName api mon <> " was sent out!"
 
-  selectAction >>= runBattleAction >>= doRes
+----
 
-onLoss = do
-  flushMon
-  flushParty
-  lift World.whiteOut
+handleBattleAction act = do
+  World.World {settings, api} <- lift get
 
-debug x = do
-  Battle {..} <- get
-  World.World {..} <- lift get
-  tell $ unwords
-    [ x, "|"
-    , show (mon1.pokemon.uid, mon1.pokemon.hp)
-    , show $ party1 <&> \m -> (m.uid, m.hp)
-    ]
+  case act of
+    Run ->
+      pure $ Just RanAway
+
+    UseItem item ->
+      pure Nothing -- Just <$> useItem item
+
+    Switch  mon  -> do
+      Battle {mon1} <- get
+      tell $ pokemonName api mon1.pokemon <> " withdrew!"
+
+      modify \b -> b { mon1 = b.mon1 { pokemon = cureToxic b.mon1.pokemon } }
+      flushMon
+      modify \w -> w
+        { mon1       = newBattleMon api mon
+        , moveCursor = 0
+        }
+
+      tell $ pokemonName api mon <> " was sent out!"
+      pure Nothing
+
+    UseMove move -> do
+      performMove move
+      Battle {..} <- get
+
+      pure if
+        | mon1.pokemon.hp <= 0 -> Just Lost
+        | mon2.pokemon.hp <= 0 -> Just Won
+        | otherwise            -> Nothing
 
 ----
+
+pause =
+  drawBattle 0 [] *> liftIO acceptInput
 
 tell msg = do
   modify \w -> w { log = msg : w.log }
@@ -211,48 +304,6 @@ swapField = do
 
 ----
 
-data BattleAction
-   = UseMove API.Move
-   | Switch  Pokemon
-   | UseItem ID
-   | Run
-
-runBattleAction = \case
-  UseMove move -> moveSelected0 move
-  UseItem item -> useItem item
-  Switch  x    -> switch x
-  Run          -> pure RanAway
-
-useItem _ = do
-  capture
-
-switch mon = do
-  Battle {..} <- get
-  World.World {..} <- lift get
-
-  tell $ pokemonName api mon1.pokemon <> " withdrew!"
-
-  modify \b -> b { mon1 = b.mon1 { pokemon = cureToxic b.mon1.pokemon } }
-  flushMon
-  modify \w -> w
-    { mon1       = newBattleMon api mon
-    , moveCursor = 0
-    }
-
-  tell $ pokemonName api mon <> " was sent out!"
-
-  drawBattle 0 []
-  liftIO acceptInput
-
-  move <- selectRandomMove mon2
-  swapField
-  performMove move
-  swapField
-  endOfTurn
-
-
-----
-
 selectAction = do
   Battle {..} <- get
 
@@ -269,7 +320,9 @@ selectAction = do
     BSelect
       | 0 <- cur -> selectMove
       | 1 <- cur -> pure $ UseItem (-1)
-      | 2 <- cur -> selectSwitch True
+      | 2 <- cur -> selectSwitch True >>= \case
+          Just mon -> pure (Switch mon)
+          Nothing  -> selectAction
       | 3 <- cur -> pure Run
     BCancel
       | isWild -> put Battle {actionCursor = 3, ..} *> selectAction
@@ -292,9 +345,6 @@ selectMove = do
 
   let canSelect n = n < length opts
 
-  when (null moves') do
-    tell $ "No moves! " <> show (null moves)
-
   drawBattle cur opts
 
   liftIO getBattleMenuInput >>= \case
@@ -313,9 +363,7 @@ selectSwitch canCancel = do
   let f mon = mon.uid /= mon1.pokemon.uid && mon.hp > 0
   let mons  = V.fromList $ filter f party1
 
-  if null mons then selectAction else do
-
-  tell $ show $ mons <&> \m -> (m.uid, m.hp)
+  if null mons then pure Nothing else do
 
   0 & fix \loop cur0 -> do
     let cur = mod cur0 (V.length mons)
@@ -328,47 +376,12 @@ selectSwitch canCancel = do
     liftIO getMenuInput >>= \case
       CursorUp   -> loop (pred cur0)
       CursorDown -> loop (succ cur0)
-      Select     -> pure $ Switch $ mons V.! cur
+      Select     -> pure $ Just $ mons V.! cur
       Cancel
-        | canCancel -> selectAction
+        | canCancel -> pure Nothing
         | otherwise -> loop cur0
 
 ----
-
-moveSelected0 move = do
-  Battle {..} <- get
-  move2 <- selectRandomMove mon2
-
-  let spe1 = round $ fi mon1.stats.spe * boostMult mon1.boosts.spe
-  let spe2 = round $ fi mon2.stats.spe * boostMult mon2.boosts.spe
-
-  goFirst <- case compare spe1 spe2 of
-    LT -> pure False
-    GT -> pure True
-    EQ -> liftIO randomIO
-
-  if goFirst then do
-    performMove move
-    battleResult >>= \case
-      Just r  -> pure r
-      Nothing -> do
-        drawBattle 0 []
-        liftIO acceptInput
-        swapField
-        performMove move2
-        swapField
-        endOfTurn
-  else do
-    swapField
-    performMove move2
-    swapField
-    battleResult >>= \case
-      Just r  -> pure r
-      Nothing -> do
-        drawBattle 0 []
-        liftIO acceptInput
-        performMove move
-        endOfTurn
 
 performMove move = do
   World.World {..} <- lift get
@@ -502,18 +515,6 @@ performMove'' move = do
 
     pure ()
 
-struggle = do
-  Battle {..} <- get
-  put Battle
-    { mon1 = mon1
-      { pokemon = mon1.pokemon
-        { hp = max 0 $ mon1.pokemon.hp - div (mon1.stats.hp) 4
-        }
-      }
-    , ..
-    }
-  runAttackResult =<< basicAttack struggleID NON True 50 mon1 mon2 False
-
 modifyMove move f = do
   modify \Battle {..} -> Battle
     { mon1 = mon1
@@ -531,35 +532,10 @@ modifyMove move f = do
 
 ----
 
--- bagSelected =
-  -- capture
-
 capture = do
   Battle {..} <- get
   lift $ modify \w -> w { World.party = World.party w <> [mon2.pokemon] }
   pure Won
-
-----
-
-endOfTurn = do
-  Battle {..} <- get
-
-  if | mon1.pokemon.hp == 0 -> pure Lost
-     | mon2.pokemon.hp == 0 -> pure Won
-     | otherwise            -> selectAction >>= runBattleAction
-
-battleResult = do
-  Battle {..} <- get
-  pure $ if
-    | mon1.pokemon.hp == 0 -> Just Lost
-    | mon2.pokemon.hp == 0 -> Just Won
-    | otherwise            -> Nothing
-
-data BattleResult
-   = Won
-   | Lost
-   | RanAway
-   deriving Eq
 
 ----
 
