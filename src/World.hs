@@ -18,25 +18,28 @@ import Data.ByteString.Builder qualified as BS
 import System.IO
 import Data.Map qualified as M
 import Data.IntMap qualified as IM
+import Settings
 
 
 type WorldM m = StateT (World m) m
 
 data World m = World
-   { wm         :: Maps Tile
-   , pl         :: Pos
-   , menuCursor :: Int
-   , twidth     :: Int
-   , theight    :: Int
-   , npcs       :: M.Map Pos (Dialogue (WorldM m) ())
-   , money      :: Int
-   , bagItems   :: IM.IntMap Int -- ItemID -> Count
-   , pcItems    :: IM.IntMap Int
-   , api        :: API.PokeAPI
-   , party      :: [Pokemon]
-   , respawnLoc :: Pos
+   { wm             :: Maps Tile
+   , pl             :: Pos
+   , menuCursor     :: Int
+   , twidth         :: Int
+   , theight        :: Int
+   , npcs           :: M.Map Pos (Dialogue (WorldM m) ())
+   , money          :: Int
+   , bagItems       :: IM.IntMap Int -- ItemID -> Count
+   , pcItems        :: IM.IntMap Int
+   , api            :: API.PokeAPI
+   , party          :: [Pokemon]
+   , respawnLoc     :: Pos
    , encounterGraze :: Int -- turns without encounter
-   , unique :: Int -- counter used to produce unique numbers
+   , unique         :: Int -- counter used to produce unique numbers
+   , settings       :: Settings
+   , stepCount      :: Int
    }
 
 ----

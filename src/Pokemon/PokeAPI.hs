@@ -504,9 +504,9 @@ getEvYield PokeAPI {..} id = do
       case a.stat.name of
         "hp"              -> go Stat {hp =a.effort, ..} as
         "attack"          -> go Stat {att=a.effort, ..} as
-        "defence"         -> go Stat {def=a.effort, ..} as
+        "defense"         -> go Stat {def=a.effort, ..} as
         "special-attack"  -> go Stat {spA=a.effort, ..} as
-        "special-defence" -> go Stat {spD=a.effort, ..} as
+        "special-defense" -> go Stat {spD=a.effort, ..} as
         "speed"           -> go Stat {spe=a.effort, ..} as
         _                 -> go Stat {..} as
 

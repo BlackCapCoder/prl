@@ -10,6 +10,7 @@ import Pokemon.PokeAPI qualified as API
 import Pokemon.Pokemon
 import Pokemon.Type as TYPE
 import Pokemon.Stat
+import Settings
 import System.Random
 import Prelude hiding (Field)
 import Control.Monad.State
@@ -26,9 +27,6 @@ import Data.List (elem)
 ----
 
 healthBarWidth  = 20
-confusionChance = (1, 3)
-paralysisChance = (1, 2)
-thawChance      = (1, 5)
 
 gutsID         = 62
 adaptabilityID = 91
@@ -87,6 +85,7 @@ runBattle =
   evalStateT battle
 
 battle = do
+  World.World {..} <- lift get
   Battle {..} <- get
 
   when isWild do
@@ -96,6 +95,12 @@ battle = do
      tell $ name <> " sent out " <> pokemonName api mon1.pokemon
 
   res <- selectAction
+
+  -- Grant EVs
+  when (res == Won && not settings.noEVs) do
+    let Just evs = API.getEvYield api mon2.pokemon.id
+    modify \b -> b { mon1 = b.mon1 { pokemon = addEVs evs b.mon1.pokemon } }
+
   flushParty
 
   case res of
@@ -130,6 +135,7 @@ updateParty p (x:xs)
 updateMon p1 p2 = p2
   { hp     = p1.hp
   , status = p1.status
+  , evs    = p1.evs
   }
 
 cureToxic p = case p.status of
@@ -172,6 +178,7 @@ selectAction = do
     _ -> selectAction
 
 selectMove = do
+  World.World {..} <- lift get
   Battle {..} <- get
 
   let cur = moveCursor
@@ -236,6 +243,7 @@ moveSelected0 move = do
         endOfTurn
 
 moveSelected move = do
+  World.World {..} <- lift get
   Battle {..} <- get
 
   -- flinch
@@ -271,17 +279,17 @@ moveSelected move = do
           tell $ pokemonName api mon1.pokemon <> " is fast asleep"
 
     Just Paralysis -> do
-      roll <- liftIO $ randomRIO paralysisChance
-      if roll==1 then do
+      roll <- liftIO $ randomRIO (0.0, 1.0)
+      if roll <= settings.paralysisChance then do
         tell $ pokemonName api mon1.pokemon <> " couldn't move because it's paralyzed!"
       else do
         moveSelected' move
 
     Just Freeze -> do
-      thawRoll <- liftIO $ randomRIO thawChance
+      thawRoll <- liftIO $ randomRIO (0.0, 1.0)
 
       -- TODO: Moves that unfreeze the user
-      let thaw = thawRoll == 1
+      let thaw = thawRoll <= settings.thawChance
 
       if not thaw then do
         tell $ pokemonName api mon1.pokemon <> " is frozen"
@@ -300,6 +308,7 @@ moveSelected move = do
     _ -> moveSelected' move
 
 moveSelected' move = do
+  World.World {..} <- lift get
   Battle {..} <- get
 
   -- confusion
@@ -312,8 +321,8 @@ moveSelected' move = do
     GT -> do
       put Battle { mon1 = mon1 { confusion = mon1.confusion - 1 }, .. }
       tell $ pokemonName api mon1.pokemon <> " is confused " <> show mon1.confusion
-      roll <- liftIO $ randomRIO confusionChance
-      if roll == 1 then do
+      roll <- liftIO $ randomRIO (0.0, 1.0)
+      if roll <= settings.confusionChance then do
         tell $ pokemonName api mon1.pokemon <> " hit itself in its confusion!"
         confusionHit
       else do
@@ -345,6 +354,7 @@ confusionHit = do
 moveSelected'' move = do
   -- attract
 
+  World.World {..} <- lift get
   Battle {..} <- get
 
   let Just m = IM.lookup move.id api.moves
@@ -431,10 +441,12 @@ data BattleResult
    = Won
    | Lost
    | RanAway
+   deriving Eq
 
 ----
 
 selectRandomMove mon = do
+  World.World {..} <- lift get
   Battle {..} <- get
 
   let moves = mapMaybe (\m -> IM.lookup m.id api.moves <* guard (m.pp > 0)) mon.pokemon.moves
@@ -450,6 +462,7 @@ selectRandomMove mon = do
 ----
 
 drawBattle cur opts = do
+  World.World {..} <- lift get
   Battle {..} <- get
 
   let (w1, info1) = monInfo api False healthBarWidth mon2
@@ -467,6 +480,7 @@ drawBattle cur opts = do
 ----
 
 draw pic = do
+  World.World {..} <- lift get
   Battle {..} <- get
   liftIO do
     putStr $ clearScreen <> cursorHome
@@ -598,6 +612,7 @@ boostMult n = case compare n 0 of
   LT -> 1 / (1 - fi n/2)
 
 basicAttack moveID ty isPhysical pow mon1 mon2 neverCrit = do
+  World.World {..} <- lift get
   Battle {field} <- get
 
   ---- Protect
@@ -722,7 +737,9 @@ basicAttack moveID ty isPhysical pow mon1 mon2 neverCrit = do
         | isCritical = 1.5
         | otherwise  = 1.0
 
-  multRandom <- liftIO $ randomRIO (0.85, 1.0)
+  multRandom <- if settings.noDamageRanges
+    then pure 1.0
+    else liftIO $ randomRIO (0.85, 1.0)
 
   let multSTAB
         | isSTAB = if hasAdaptability then 2.0 else 1.5
@@ -836,6 +853,7 @@ runAttackResult = \case
     tell "It did no damage"
 
   Protected -> do
+    World.World {..} <- lift get
     Battle {..} <- get
     tell $ pokemonName api mon2.pokemon <> " protected itself"
 

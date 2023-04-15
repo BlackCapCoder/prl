@@ -146,18 +146,16 @@ data SemiInvul
 ----
 
 data Battle = Battle
-   { api             :: API.PokeAPI
-   , field           :: Field
+   { field           :: Field
    , mon1, mon2      :: BattleMon
    , party1, party2  :: [Pokemon]
    , log             :: [String]
-   , twidth, theight :: Int
    , isWild          :: Bool
    , actionCursor    :: Int
    , moveCursor      :: Int
    }
 
-newBattle twidth theight api party1 party2 wild = Battle
+newBattle api party1 party2 wild = Battle
   { field = newField
   , mon1  = newBattleMon api (head party1)
   , mon2  = newBattleMon api (head party2)

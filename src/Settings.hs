@@ -1,6 +1,11 @@
 module Settings where
 
 
+-- data LevelCap
+--    = Soft    -- Pokemon above the level-cap will have obedience issues
+--    | Hard    -- Pokemon cannot be leveled up above the level-cap
+--    | Dynamic -- Trainers scale with your highest level pokemon
+
 data Settings = Settings
    { reusableTMs       :: Bool -- if true, TMs are not consumed upon use
    , consumables       :: Bool -- if false, consumables are not consumed on use
@@ -19,10 +24,29 @@ data Settings = Settings
    , poisonInOverworld :: Maybe Bool
 
    , noDamageRanges    :: Bool -- if true, eliminate the random damage multiplier
+   , shiftMode         :: Bool -- set/shift mode
+
+   , confusionChance :: Float -- chance of hitting yourself during confusion
+   , paralysisChance :: Float -- chance of becomming fully paralyzed
+   , thawChance      :: Float -- chance of thawing from a freeze
    }
 
-data LevelCap
-   = Soft    -- Pokemon above the level-cap will have obedience issues
-   | Hard    -- Pokemon cannot be leveled up above the level-cap
-   | Dynamic -- Trainers scale with your highest level pokemon
+defaultSettings = Settings
+  { reusableTMs       = True
+  , consumables       = True
+  , keepItems         = True    -- implemented (iff there was an old item, overwrite new item)
+  , ppFromTMs         = True
+  , noIVs             = False   -- implemented
+  , noEVs             = False   -- implemented
+  , noHMs             = True
+  , instantCapture    = False
+  , sleepClause       = False
+  , shiftMode         = False
+  , itemClause        = Nothing
+  , poisonInOverworld = Nothing -- implemented
+  , noDamageRanges    = False   -- implemented
+  , confusionChance   = 1/3     -- implemented
+  , paralysisChance   = 1/2     -- implemented
+  , thawChance        = 1/5     -- implemented
+  }
 

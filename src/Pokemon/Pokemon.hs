@@ -1,5 +1,6 @@
 module Pokemon.Pokemon where
 
+import Settings
 import Pokemon.Stat
 import Pokemon.Nature
 import Pokemon.Type
@@ -9,6 +10,7 @@ import Data.IntMap qualified as IM
 import System.Random
 import System.Random.Shuffle
 import Data.Text qualified as Text
+import Control.Monad.State
 
 type ID  = Int
 type UID = Int -- unique ID
@@ -73,7 +75,7 @@ statusAbriv = \case
 
 -- calcStat base level (natureBoost->nature) iv ev = Stat
 
-createPokemon uid api@PokeAPI {..} id level_range = do
+createPokemon Settings{..} uid api@PokeAPI {..} id level_range = do
   let Just mon  = IM.lookup id pokemon
   let Just base = API.getBaseStats api id
 
@@ -102,14 +104,14 @@ createPokemon uid api@PokeAPI {..} id level_range = do
 
   let types = mon.types <&> \a -> typeFromName a._type.name
 
-  iv_hp  <- randomRIO (0, 31)
-  iv_att <- randomRIO (0, 31)
-  iv_def <- randomRIO (0, 31)
-  iv_spA <- randomRIO (0, 31)
-  iv_spD <- randomRIO (0, 31)
-  iv_spe <- randomRIO (0, 31)
-
-  let ivs = Stat iv_hp iv_att iv_def iv_spA iv_spD iv_spe
+  ivs <- if noIVs then pure $ pure 31 else do
+    hp  <- randomRIO (0, 31)
+    att <- randomRIO (0, 31)
+    def <- randomRIO (0, 31)
+    spA <- randomRIO (0, 31)
+    spD <- randomRIO (0, 31)
+    spe <- randomRIO (0, 31)
+    pure Stat {..}
 
   pure Pokemon
     { totalExp  = 0
@@ -150,5 +152,14 @@ pokemonName api mon =
       case IM.lookup mon.id api.pokemon of
         Just pok -> Text.unpack pok.name
         Nothing  -> "unknown"
+
+addEVs add mon = mon { evs = execState go mon.evs } where
+  go = do
+    modify \evs -> evs { hp  = min 252 $ evs.hp  + min (510 - sum evs) add.hp , att=evs.att }
+    modify \evs -> evs { att = min 252 $ evs.att + min (510 - sum evs) add.att, hp =evs.hp  }
+    modify \evs -> evs { def = min 252 $ evs.def + min (510 - sum evs) add.def, hp =evs.hp  }
+    modify \evs -> evs { spA = min 252 $ evs.spA + min (510 - sum evs) add.spA, hp =evs.hp  }
+    modify \evs -> evs { spD = min 252 $ evs.spD + min (510 - sum evs) add.spD, hp =evs.hp  }
+    modify \evs -> evs { spe = min 252 $ evs.spe + min (510 - sum evs) add.spe, hp =evs.hp  }
 
 

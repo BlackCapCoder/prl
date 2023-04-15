@@ -17,6 +17,8 @@ import Pokemon.Pokemon
 import Pokemon.Nature
 import Pokemon.Stat
 import Pokemon.Type as TYPE
+import Settings
+import Weighted qualified
 
 import Control.Monad.State
 import Data.Bifunctor
@@ -28,7 +30,6 @@ import Data.ByteString.Builder qualified as BS
 import Data.IntMap             qualified as IM
 import Data.Map                qualified as M
 import Data.Text               qualified as Text
-import Weighted                qualified
 import StyledString
 import Data.List (intercalate, intersperse)
 
@@ -48,30 +49,36 @@ encounterTable = Weighted.Weighted
   -- , 10 --> (9, (100, 100))
   ]
 
+-- How often to take damage from poison in the overworld
+poisonTickFreq = 10
+
 ----
 
 initialWorld = do
-  api <- API.getPokeAPI
+  let settings = defaultSettings
 
-  mon <- createPokemon 0 api 1 (5, 5)
+  api <- API.getPokeAPI
+  mon <- createPokemon settings 0 api 1 (5, 5)
 
   Just (h, w) <- getTerminalSize
   let world = World
-        { wm         = worldMap
-        , pl         = Pos 4 (V2 4 3)
-        -- , pl         = Pos 7 (V2 20 10)
-        , menuCursor = 0
-        , twidth     = w
-        , theight    = h
-        , npcs       = initialNpcs
-        , money      = 1000
-        , bagItems   = mempty & IM.insert 0 1
-        , pcItems    = mempty & IM.insert 1 1
-        , api        = api
-        , party      = [mon { status=Nothing }]
-        , respawnLoc = pl world
+        { wm             = worldMap
+        , pl             = Pos 4 (V2 4 3)
+        -- , pl             = Pos 7 (V2 20 10)
+        , menuCursor     = 0
+        , twidth         = w
+        , theight        = h
+        , npcs           = initialNpcs
+        , money          = 1000
+        , bagItems       = mempty & IM.insert 0 1
+        , pcItems        = mempty & IM.insert 1 1
+        , api            = api
+        , party          = [mon { status=Nothing }]
+        , respawnLoc     = pl world
         , encounterGraze = 0
-        , unique = 1
+        , unique         = 1
+        , settings       = settings
+        , stepCount      = 0
         }
   pure world
 
@@ -388,7 +395,7 @@ play' = do
               moved
               case t of
                 Grass -> walkedInGrass
-                _     -> pure ()
+                _     -> tickPoison
             Just PC -> runDialogue pcDialogue
             _ -> pure ()
 
@@ -401,6 +408,7 @@ test = do
 moved = do
   modify \World {..} -> World
     { encounterGraze = max 0 $ pred encounterGraze
+    , stepCount      = succ stepCount
     , ..
     }
 
@@ -408,16 +416,19 @@ walkedInGrass = do
   World {..} <- get
   when (encounterGraze < 1) do
   roll <- randomRIO (0, 99)
-  when (roll < encounterRate) do
-  encounter encounterTable
+  if roll < encounterRate then
+    encounter encounterTable
+  else
+    tickPoison
 
 encounter table = do
   liftIO (Weighted.roll table) >>= \case
     Nothing -> pure ()
     Just (pid, lvl) -> do
       api <- gets api
+      set <- gets settings
       uid <- getUnique
-      mon <- createPokemon uid api pid lvl
+      mon <- createPokemon set uid api pid lvl
       battle mon
       modify \w -> w
         { encounterGraze = encounterCooldown
@@ -425,10 +436,41 @@ encounter table = do
 
 battle (mon :: Pokemon) = do
   World {..} <- get
-  let b = Battle.newBattle twidth theight api party [mon] True
+  let b = Battle.newBattle api party [mon] True
   Battle.runBattle b
-  pure ()
 
+  -- give back held items
+  when settings.keepItems do
+    modify \w -> w { party = restoreHeldItems party w.party }
+
+restoreHeldItems old0 new0 = foldr go new0 old0 where
+  go old news
+    | Just item <- old.heldItem = put old.uid (Just item) news
+    | otherwise = news
+
+  put uid item (mon:ms)
+    | mon.uid == uid = mon {heldItem=item} : ms
+    | otherwise = mon : put uid item ms
+  put _ _ ms = ms
+
+tickPoison = do
+  World {..} <- get
+  when (mod stepCount poisonTickFreq == 0) do
+
+  case settings.poisonInOverworld of
+    Nothing   -> pure ()
+    Just kill -> do
+      let party' = go kill party
+      put World { party = party', .. }
+      when (all (\mon -> mon.hp == 0) party') whiteOut
+
+  where
+    go kill (mon:ms)
+      | mon.status /= Just Poison = mon : go kill ms
+      | mon.hp > 1 = mon { hp = pred mon.hp, status=mon.status } : go kill ms
+      | kill       = mon { hp = 0, status=Nothing } : go kill ms
+      | otherwise  = mon { hp = 1, status=Nothing } : go kill ms
+    go _ ms = ms
 
 ----
 
