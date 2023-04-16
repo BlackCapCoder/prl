@@ -83,7 +83,7 @@ initialWorld = do
         , bagItems       = mempty & IM.insert 0 1
         , pcItems        = mempty & IM.insert 1 1
         , api            = api
-        , party          = [mon1, mon2, mon3]
+        , party          = [mon1 {level=100}, mon2, mon3]
         , respawnLoc     = pl world
         , encounterGraze = 0
         , unique         = 3

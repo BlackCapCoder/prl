@@ -488,9 +488,9 @@ getBaseStats PokeAPI {..} id = do
       case a.stat.name of
         "hp"              -> go Stat {hp =a.base_stat, ..} as
         "attack"          -> go Stat {att=a.base_stat, ..} as
-        "defence"         -> go Stat {def=a.base_stat, ..} as
+        "defense"         -> go Stat {def=a.base_stat, ..} as
         "special-attack"  -> go Stat {spA=a.base_stat, ..} as
-        "special-defence" -> go Stat {spD=a.base_stat, ..} as
+        "special-defense" -> go Stat {spD=a.base_stat, ..} as
         "speed"           -> go Stat {spe=a.base_stat, ..} as
         _                 -> go Stat {..} as
 
