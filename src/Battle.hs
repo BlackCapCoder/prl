@@ -173,9 +173,13 @@ forcedSwitch = do
   tell $ pokemonName api mon <> " was sent out!"
 
 endOfTurn = do
+  Battle {mon1,mon2} <- get
+  mon1' <- tickDrowsy mon1
+  mon2' <- tickDrowsy mon2
+
   modify \Battle {..} -> Battle
-    { mon1 = tickTurnMon mon1
-    , mon2 = tickTurnMon mon2
+    { mon1 = tickTurnMon $ tickCurse mon1'
+    , mon2 = tickTurnMon $ tickCurse mon2'
     , ..
     }
 
@@ -196,12 +200,29 @@ endOfTurn = do
 
 ----
 
+tickDrowsy mon
+  | mon.drowsy && isNothing mon.pokemon.status = pure mon
+  | otherwise = do
+      World.World {settings, api} <- lift get
+      tell $ pokemonName api mon.pokemon <> " fell asleep"
+      turns <- liftIO $ randomRIO (1, 3)
+      pure mon { pokemon = mon.pokemon { status = Just (Sleep turns) } }
+
+tickCurse mon
+  | not mon.cursed = mon
+  | otherwise      = mon
+    { pokemon = mon.pokemon
+      { hp = max 0 $ mon.pokemon.hp - max 1 (div mon.stats.hp 4)
+      }
+    }
+
 tickTurnMon mon = mon
   { enduring    = False
   , protected   = False
   , wideGuard   = False
   , flinched    = False
   , snatching   = False
+  , drowsy      = False
   , taunt       = max 0 $ pred mon.taunt
   , torment     = max 0 $ pred mon.torment
   , healBlock   = max 0 $ pred mon.healBlock
