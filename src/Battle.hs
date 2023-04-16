@@ -625,8 +625,15 @@ runPMove mid mov = do
   when (mov.cat /= Pok.Status) do
     runBasicAttackResult =<< basicAttack mid mov.ty (mov.cat == Pok.Physical) mov.pow mon1 mon2
 
+  let env = MoveEnv
+        { getUser   = gets \b -> b.mon1
+        , getTarget = gets \b -> b.mon2
+        , putUser   = \a -> modify \b -> b {mon1 = a}
+        , putTarget = \a -> modify \b -> b {mon2 = a}
+        }
+
   tell $ "Effect: " <> show mov.eff
-  runEffect mov.eff
+  runEffect env mov.eff
 
   pure ()
 

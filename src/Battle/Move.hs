@@ -16,62 +16,73 @@ import Data.List (elem, notElem)
 -- TODO: frostbite
 
 
-runEffect eff = do
-  Battle {..} <- get
+data MoveEnv m = MoveEnv
+   { getUser   :: m BattleMon
+   , getTarget :: m BattleMon
+   , putUser   :: BattleMon -> m ()
+   , putTarget :: BattleMon -> m ()
+   }
+
+
+runEffect env@MoveEnv {..} eff = do
+  Battle {field,..} <- get
+
+  user <- getUser
+  targ <- getTarget
 
   case eff of
     None   -> pure ()
-    l :+ r -> runEffect l *> runEffect r
+    l :+ r -> runEffect env l *> runEffect env r
     n :% e -> do
       roll <- liftIO $ randomRIO (0, 99)
-      when (roll < n) (runEffect e)
+      when (roll < n) (runEffect env e)
     Choose [] -> pure ()
     Choose xs -> do
       roll <- liftIO $ randomRIO (0, pred $ length xs)
-      runEffect $ xs !! roll
+      runEffect env $ xs !! roll
 
-    Flinch -> editTarget \mon -> mon { flinched = True }
+    Flinch -> putTarget targ { flinched = True }
 
     Confuse -> do
-      if mon1.confusion > 0 then do
+      if user.confusion > 0 then do
         pure () -- already confused
       else do
         roll <- liftIO $ randomRIO (1, 4)
-        editTarget \mon -> mon { confusion = roll }
+        putTarget targ { confusion = roll }
 
     Attract -> do
-      if ( mon1.pokemon.gender /= Genderless
-         && mon2.pokemon.gender /= Genderless
-         && mon1.pokemon.gender /= mon2.pokemon.gender
+      if ( user.pokemon.gender /= Genderless
+         && targ.pokemon.gender /= Genderless
+         && user.pokemon.gender /= targ.pokemon.gender
          )
       then do
-        editTarget \mon -> mon { attraction = IntSet.insert mon1.pokemon.uid mon.attraction }
+        putTarget targ { attraction = IntSet.insert user.pokemon.uid targ.attraction }
       else do
         pure () -- no attraction
 
     Curse -> do
-      if GHO `elem` mon1.pokemon.types
+      if GHO `elem` user.pokemon.types
       then do
-        editUser \u -> u
-          { pokemon = u.pokemon
-            { hp = max 0 $ u.pokemon.hp - div u.stats.hp 4
+        env.putUser user
+          { pokemon = user.pokemon
+            { hp = max 0 $ user.pokemon.hp - div user.stats.hp 4
             }
           }
-        editTarget \mon -> mon { cursed = True }
+        env.putTarget targ { cursed = True }
       else do
-        editUser \mon -> mon { boosts = mon.boosts + zero {att=1,def=1,spe= -1,acc=0} }
+        env.putUser user { boosts = user.boosts + zero {att=1,def=1,spe= -1,acc=0} }
 
     LeechSeed -> do
-      unless (GRA `elem` mon2.pokemon.types) do -- TODO: handle safety googles?
-      editTarget \mon -> mon { leeched = True }
+      unless (GRA `elem` targ.pokemon.types) do -- TODO: handle safety googles?
+      putTarget targ { leeched = True }
 
     Yawn -> do
-      unless (isAsleep mon2.pokemon) do
-      editTarget \mon -> mon { drowsy = True }
+      unless (isAsleep targ.pokemon) do
+      putTarget targ { drowsy = True }
 
     PerishSong -> do
-      when (isNothing mon2.perishCount) do
-      editTarget \mon -> mon { perishCount = Just 3 }
+      when (isNothing targ.perishCount) do
+      putTarget targ { perishCount = Just 3 }
 
     Gravity
       | field.gravity > 0 -> put Battle {field = field { gravity=3 }, ..}
@@ -93,24 +104,24 @@ runEffect eff = do
       { field = field { lane1 = field.lane1 {tailwind=3} }, .. }
 
     LuckyChant -> do
-      editUser \mon -> mon { luckyChant = 3 }
+      putUser user { luckyChant = 3 }
 
     EStatus s -> do
-      when (isNothing mon2.pokemon.status) do
+      when (isNothing targ.pokemon.status) do
       case s of
         Move.Paralysis
-          | ELE `notElem` mon2.pokemon.types -> putTargetStatus $ Just Pok.Paralysis
+          | ELE `notElem` targ.pokemon.types -> putTargetStatus env $ Just Pok.Paralysis
         Move.Burn
-          | FIR `notElem` mon2.pokemon.types -> putTargetStatus $ Just Pok.Burn
+          | FIR `notElem` targ.pokemon.types -> putTargetStatus env $ Just Pok.Burn
         Move.Freeze
-          | ICE `notElem` mon2.pokemon.types -> putTargetStatus $ Just Pok.Freeze
+          | ICE `notElem` targ.pokemon.types -> putTargetStatus env $ Just Pok.Freeze
         Move.Poison
-          | POI `notElem` mon2.pokemon.types -> putTargetStatus $ Just Pok.Poison
+          | POI `notElem` targ.pokemon.types -> putTargetStatus env $ Just Pok.Poison
         Move.Toxic
-          | POI `notElem` mon2.pokemon.types -> putTargetStatus $ Just $ Pok.Toxic 0
+          | POI `notElem` targ.pokemon.types -> putTargetStatus env $ Just $ Pok.Toxic 0
         Move.Sleep -> do
           roll <- liftIO $ randomRIO (1, 3)
-          putTargetStatus $ Just $ Pok.Sleep roll -- TODO: early bird, insomnia
+          putTargetStatus env $ Just $ Pok.Sleep roll -- TODO: early bird, insomnia
         _ -> pure ()
 
     EWeather w -> editField \f -> f
@@ -155,27 +166,27 @@ runEffect eff = do
     EHazard Web ->
       editLane1 \l -> l { web = True }
 
-    EInvul Move.Flying -> editUser \u -> u
+    EInvul Move.Flying -> putUser user
       { semiInvul = Just Bat.Flying }
 
-    EInvul Move.Digging -> editUser \u -> u
+    EInvul Move.Digging -> putUser user
       { semiInvul = Just Bat.Digging }
 
-    EInvul Move.Diving -> editUser \u -> u
+    EInvul Move.Diving -> putUser user
       { semiInvul = Just Bat.Diving }
 
-    EInvul Move.Phantom -> editUser \u -> u
+    EInvul Move.Phantom -> putUser user
       { semiInvul = Just Bat.Phantom }
 
     ELocking _ -> error "TODO: Locking damage-over-time moves"
 
-    NoSwitch -> editTarget \t -> t
+    NoSwitch -> putTarget targ
       { blocked = True }
 
     Locked -> error "TODO: Locking moves"
 
     ClearStatus ->
-      putTargetStatus Nothing
+      putTargetStatus env Nothing
 
     ClearStatusParty -> editParty2 $
       map \pok -> pok { status = Nothing }
@@ -193,18 +204,18 @@ runEffect eff = do
       , web         = False
       }
 
-    AddBoost False b -> editTarget \t -> t
-      { boosts = t.boosts + b }
+    AddBoost False b -> putTarget targ
+      { boosts = targ.boosts + b }
 
-    AddBoost True b -> editUser \u -> u
-      { boosts = u.boosts + b }
+    AddBoost True b -> putUser user
+      { boosts = user.boosts + b }
 
     AddBoostIfKO _ -> error "AddBoostIfKO"
 
     AddRandomBoost n -> do
       roll <- liftIO $ randomRIO (1, 5)
-      editTarget \t -> t
-        { boosts = t.boosts +
+      putTarget targ
+        { boosts = targ.boosts +
           case roll of
             1 -> zero {acc=0, att=n}
             2 -> zero {acc=0, def=n}
@@ -213,117 +224,117 @@ runEffect eff = do
             5 -> zero {acc=0, spe=n}
         }
 
-    ClearBoost -> editTarget \t -> t
+    ClearBoost -> putTarget targ
       { boosts = zero }
 
-    InvBoost -> editTarget \t -> t
-      { boosts = t.boosts * pure (-1) }
+    InvBoost -> putTarget targ
+      { boosts = targ.boosts * pure (-1) }
 
-    CopyBoost -> editUser \u -> u
-      { boosts = mon2.boosts }
+    CopyBoost -> putUser user
+      { boosts = targ.boosts }
 
     MoveBoost -> do
-      editUser   \u -> u { boosts = mon2.boosts }
-      editTarget \t -> t { boosts = zero        }
+      putUser   user { boosts = targ.boosts }
+      putTarget targ { boosts = zero        }
 
     SwapBoost -> do
-      editUser   \u -> u { boosts = mon2.boosts }
-      editTarget \t -> t { boosts = mon1.boosts }
+      putUser   user { boosts = targ.boosts }
+      putTarget targ { boosts = user.boosts }
 
     IgnoreBoosts -> error "IgnoreBoosts"
 
-    SetAbility a -> editTarget \t -> t
-      { pokemon = t.pokemon { ability = a } }
+    SetAbility a -> putTarget targ
+      { pokemon = targ.pokemon { ability = a } }
 
     CopyAbility Target2Allies -> error "CopyAbility Target2Allies"
 
-    CopyAbility Target2User -> editUser \u -> u
-      { pokemon = u.pokemon { ability = mon2.pokemon.ability } }
+    CopyAbility Target2User -> putUser user
+      { pokemon = user.pokemon { ability = targ.pokemon.ability } }
 
-    CopyAbility User2Target -> editTarget \t -> t
-      { pokemon = t.pokemon { ability = mon1.pokemon.ability } }
+    CopyAbility User2Target -> putTarget targ
+      { pokemon = targ.pokemon { ability = user.pokemon.ability } }
 
     SwapAbility -> do
-      editUser   \u -> u { pokemon = u.pokemon { ability = mon2.pokemon.ability } }
-      editTarget \t -> t { pokemon = t.pokemon { ability = mon1.pokemon.ability } }
+      putUser   user { pokemon = user.pokemon { ability = targ.pokemon.ability } }
+      putTarget targ { pokemon = targ.pokemon { ability = user.pokemon.ability } }
 
-    SuppressAbility -> editTarget \t -> t
+    SuppressAbility -> putTarget targ
       { suppressed = True }
 
-    SetType ty False -> editTarget \t -> t
-      { pokemon = t.pokemon { types = [ty] } }
+    SetType ty False -> putTarget targ
+      { pokemon = targ.pokemon { types = [ty] } }
 
-    SetType ty True -> editUser \u -> u
-      { pokemon = u.pokemon { types = [ty] } }
+    SetType ty True -> putUser user
+      { pokemon = user.pokemon { types = [ty] } }
 
-    AddType ty -> editTarget \t -> t
-      { pokemon = t.pokemon { types = take 2 t.pokemon.types <> [ty] } }
+    AddType ty -> putTarget targ
+      { pokemon = targ.pokemon { types = take 2 targ.pokemon.types <> [ty] } }
 
-    RemoveType ty -> editTarget \t -> t
-      { pokemon = t.pokemon { types = filter (/=ty) t.pokemon.types } }
+    RemoveType ty -> putTarget targ
+      { pokemon = targ.pokemon { types = filter (/=ty) targ.pokemon.types } }
 
     Camouflage -> error "Camouflage"
     Recharge   -> error "Recharge"
     Precharge  -> error "Precharge"
 
-    SwapAttDef -> editTarget \t -> t
-      { stats = t.stats { att = t.stats.def, def = t.stats.att, hp=t.stats.hp } }
+    SwapAttDef -> putTarget targ
+      { stats = targ.stats { att = targ.stats.def, def = targ.stats.att, hp=targ.stats.hp } }
 
     AvgAtt -> do
-      let att = div (mon1.stats.att + mon2.stats.att) 2
-      let spA = div (mon1.stats.spA + mon2.stats.spA) 2
+      let att = div (user.stats.att + targ.stats.att) 2
+      let spA = div (user.stats.spA + targ.stats.spA) 2
 
-      editUser   \u -> u { stats = u.stats {hp=u.stats.hp, att=att, spA=spA} }
-      editTarget \u -> u { stats = u.stats {hp=u.stats.hp, att=att, spA=spA} }
+      putUser   user { stats = user.stats {hp=user.stats.hp, att=att, spA=spA} }
+      putTarget targ { stats = targ.stats {hp=targ.stats.hp, att=att, spA=spA} }
 
     AvgDef -> do
-      let def = div (mon1.stats.def + mon2.stats.def) 2
-      let spD = div (mon1.stats.spD + mon2.stats.spD) 2
+      let def = div (user.stats.def + targ.stats.def) 2
+      let spD = div (user.stats.spD + targ.stats.spD) 2
 
-      editUser   \u -> u { stats = u.stats {hp=u.stats.hp, def=def, spD=spD} }
-      editTarget \u -> u { stats = u.stats {hp=u.stats.hp, def=def, spD=spD} }
+      putUser   user { stats = user.stats {hp=user.stats.hp, def=def, spD=spD} }
+      putTarget targ { stats = targ.stats {hp=targ.stats.hp, def=def, spD=spD} }
 
     SwpAtt -> do
-      editUser   \u -> u { stats = u.stats {hp=u.stats.hp, att=mon2.stats.att, spA=mon2.stats.spA} }
-      editTarget \u -> u { stats = u.stats {hp=u.stats.hp, att=mon1.stats.att, spA=mon1.stats.spA} }
+      putUser   user { stats = user.stats {hp=user.stats.hp, att=targ.stats.att, spA=targ.stats.spA} }
+      putTarget targ { stats = targ.stats {hp=targ.stats.hp, att=user.stats.att, spA=user.stats.spA} }
 
     SwpDef -> do
-      editUser   \u -> u { stats = u.stats {hp=u.stats.hp, def=mon2.stats.def, spD=mon2.stats.spD} }
-      editTarget \u -> u { stats = u.stats {hp=u.stats.hp, def=mon1.stats.def, spD=mon1.stats.spD} }
+      putUser   user { stats = user.stats {hp=user.stats.hp, def=targ.stats.def, spD=targ.stats.spD} }
+      putTarget targ { stats = targ.stats {hp=targ.stats.hp, def=user.stats.def, spD=user.stats.spD} }
 
     Switch {} -> error "Switch"
 
-    Recover n -> editTarget \t -> t
-      { pokemon = t.pokemon
-        { hp = max (fi mon2.stats.hp) $ t.pokemon.hp + round (fi mon2.stats.hp * n)
+    Recover n -> putTarget targ
+      { pokemon = targ.pokemon
+        { hp = max (fi targ.stats.hp) $ targ.pokemon.hp + round (fi targ.stats.hp * n)
         }
       }
 
-    Drain _ -> error "Drain"
+    Drain _         -> error "Drain"
     DrainSleeping _ -> error "DrainSleeping"
-    PainSplit -> error "PainSplit" -- TODO: Lazy
+    PainSplit       -> error "PainSplit" -- TODO: Lazy
 
-    MatchUserHP -> editTarget \t -> t
-      { pokemon = t.pokemon { hp = min t.stats.hp mon1.pokemon.hp } }
+    MatchUserHP -> putTarget targ
+      { pokemon = targ.pokemon { hp = min targ.stats.hp user.pokemon.hp } }
 
-    FractionalDamage n -> editTarget \t -> t
-      { pokemon = t.pokemon { hp = round $ fi t.pokemon.hp * n } }
+    FractionalDamage n -> putTarget targ
+      { pokemon = targ.pokemon { hp = round $ fi targ.pokemon.hp * n } }
 
-    FractionalDamageMax n -> editTarget \t -> t
-      { pokemon = t.pokemon
-        { hp = max 0 $ t.pokemon.hp - round (fi mon2.stats.hp * n)
+    FractionalDamageMax n -> putTarget targ
+      { pokemon = targ.pokemon
+        { hp = max 0 $ targ.pokemon.hp - round (fi targ.stats.hp * n)
         }
       }
 
-    ConstantDamage n -> editTarget \t -> t
-      { pokemon = t.pokemon
-        { hp = max 0 $ t.pokemon.hp - n
+    ConstantDamage n -> putTarget targ
+      { pokemon = targ.pokemon
+        { hp = max 0 $ targ.pokemon.hp - n
         }
       }
 
-    LevelDamage -> editTarget \t -> t
-      { pokemon = t.pokemon
-        { hp = max 0 $ t.pokemon.hp - mon2.pokemon.level
+    LevelDamage -> putTarget targ
+      { pokemon = targ.pokemon
+        { hp = max 0 $ targ.pokemon.hp - targ.pokemon.level
         }
       }
 
@@ -355,126 +366,124 @@ runEffect eff = do
     Recoil _ -> error "Recoil"
 
     Struggle ->
-      editUser \u -> u
-        { pokemon = u.pokemon
-          { hp = max 0 $ u.pokemon.hp - div u.stats.hp 4
+      putUser user
+        { pokemon = user.pokemon
+          { hp = max 0 $ user.pokemon.hp - div user.stats.hp 4
           }
         }
 
     RecoilMax n ->
-      editUser \u -> u
-        { pokemon = u.pokemon
-          { hp = max 0 $ u.pokemon.hp - round (fi u.stats.hp * n)
+      putUser user
+        { pokemon = user.pokemon
+          { hp = max 0 $ user.pokemon.hp - round (fi user.stats.hp * n)
           }
         }
 
     Protect ->
-      protectTarget
+      protectTarget env
 
     -- TODO: Attack drop
     KingShield ->
-      protectTarget
+      protectTarget env
 
     -- TODO: Poison
     BanefulBunker ->
-      protectTarget
+      protectTarget env
 
     WideGuard ->
-      editTarget \t -> t { wideGuard = True }
+      putTarget targ { wideGuard = True }
 
     Substitute -> do
-      when (mon2.subHP < 1) do
-      let health = div mon2.stats.hp 4
-      when (mon2.pokemon.hp > health) do
-      editTarget \t -> t
-        { subHP = health
-        , pokemon = t.pokemon { hp = t.pokemon.hp - health }
+      when (targ.subHP < 1) do
+      let health = div targ.stats.hp 4
+      when (targ.pokemon.hp > health) do
+      putTarget targ
+        { subHP   = health
+        , pokemon = targ.pokemon { hp = targ.pokemon.hp - health }
         }
 
     IgnoreProtect _ -> error "IgnoreProtect"
 
-    Endure -> editTarget \t -> t
+    Endure -> putTarget targ
       { enduring = True }
 
-    Don'tKill -> error "Don'tKill"
-
+    Don'tKill   -> error "Don'tKill"
     FinalGambit -> error "FinalGambit"
-    BeakBlast -> error "BeakBlast"
-    ShieldTrap -> error "ShieldTrap"
+    BeakBlast   -> error "BeakBlast"
+    ShieldTrap  -> error "ShieldTrap"
 
-    DestinyBond -> editTarget \t -> t
+    DestinyBond -> putTarget targ
       { destinyBond = 1 }
 
-    Wish -> error "Wish"
+    Wish        -> error "Wish"
     Delay2Turns -> error "Delay2Turns"
-
     UserPrimary -> error "UserPrimary"
     ExtraType _ -> error "ExtraType"
 
-    Snatch -> editTarget \t -> t
+    Snatch -> putTarget targ
       { snatching = True }
 
     Instruct -> error "Instruct"
     AllySwap -> error "AllySwap"
 
-    Taunt   -> editTarget \t -> t { taunt  = 3 }
-    Embargo -> editTarget \t -> t { embargo = 3 }
-    Encore  -> error "Encore"
-    Disable -> error "Disable"
-    Metronome -> error "Metronome"
-    Assist -> error "Assist"
-    AfterYou -> error "AfterYou"
+    Taunt   -> putTarget targ { taunt  = 3 }
+    Embargo -> putTarget targ { embargo = 3 }
+    Encore      -> error "Encore"
+    Disable     -> error "Disable"
+    Metronome   -> error "Metronome"
+    Assist      -> error "Assist"
+    AfterYou    -> error "AfterYou"
     MorpekoMode -> error "MorpekoMode"
 
-    UserDies -> editUser \u -> u
-      { pokemon = u.pokemon { hp = 0 } }
+    UserDies -> putUser user
+      { pokemon = user.pokemon { hp = 0 } }
 
     Autotomize -> error "Autotomize"
-    AxeKick -> error "AxeKick"
-    BaddyBad -> error "BaddyBad"
-    BeatUp -> error "BeatUp"
-    Belch -> error "Belch"
-    Bestow -> error "Bestow"
-    BodyPress -> error "BodyPress"
-    EatBerry -> error "EatBerry"
+    AxeKick    -> error "AxeKick"
+    BaddyBad   -> error "BaddyBad"
+    BeatUp     -> error "BeatUp"
+    Belch      -> error "Belch"
+    Bestow     -> error "Bestow"
+    BodyPress  -> error "BodyPress"
+    EatBerry   -> error "EatBerry"
 
     BurnIfBoosted -> do
-      when (isNothing mon2.pokemon.status && any (>0) mon2.boosts) do
-      putTargetStatus (Just Pok.Burn)
+      when (isNothing targ.pokemon.status && any (>0) targ.boosts) do
+      putTargetStatus env (Just Pok.Burn)
 
     Captivate -> do
-      when ( mon1.pokemon.gender /= Genderless
-          && mon2.pokemon.gender /= Genderless
-          && mon1.pokemon.gender /= mon2.pokemon.gender
+      when ( user.pokemon.gender /= Genderless
+          && targ.pokemon.gender /= Genderless
+          && user.pokemon.gender /= targ.pokemon.gender
            ) do
-      editTarget \t -> t
-        { boosts = t.boosts + zero { spA= -2, acc=0 } }
+      putTarget targ
+        { boosts = targ.boosts + zero { spA= -2, acc=0 } }
 
-    Charge -> editTarget \t -> t { charged = True }
+    Charge -> putTarget targ { charged = True }
 
-    ChillyReception -> error "ChillyReception"
+    ChillyReception     -> error "ChillyReception"
     BoostSuperEffective -> error "BoostSuperEffective"
-    Comeuppance -> error "Comeuppance"
-    Conversion -> error "Conversion"
-    Conversion2 -> error "Conversion2"
-    Copycat -> error "Copycat"
-    CoreEnforcer -> error "CoreEnforcer"
+    Comeuppance         -> error "Comeuppance"
+    Conversion          -> error "Conversion"
+    Conversion2         -> error "Conversion2"
+    Copycat             -> error "Copycat"
+    CoreEnforcer        -> error "CoreEnforcer"
 
-    RemoveItem -> editTarget \t -> t
-      { pokemon = t.pokemon { heldItem = Nothing } }
+    RemoveItem -> putTarget targ
+      { pokemon = targ.pokemon { heldItem = Nothing } }
 
     StealItem -> do
-      editTarget \t -> t { pokemon = t.pokemon { heldItem = Nothing } }
-      when (isNothing mon1.pokemon.heldItem) do
-      editUser \u -> u { pokemon = u.pokemon { heldItem = mon2.pokemon.heldItem } }
+      putTarget targ { pokemon = targ.pokemon { heldItem = Nothing } }
+      when (isNothing user.pokemon.heldItem) do
+      putUser user { pokemon = user.pokemon { heldItem = targ.pokemon.heldItem } }
 
     Safeguard -> editLane2 \l -> l
       { safeguard = 3 }
 
-    CraftyShield -> error "CraftyShield"
-    Defog -> error "Defog"
-    RemovePP _ -> error "RemovePP"
-    ExpandingForce -> error "ExpandingForce"
+    CraftyShield      -> error "CraftyShield"
+    Defog             -> error "Defog"
+    RemovePP _        -> error "RemovePP"
+    ExpandingForce    -> error "ExpandingForce"
     NoFleeingNextTurn -> error "NoFleeingNextTurn"
 
     FirePledge  -> error "FirePledge"
@@ -482,11 +491,11 @@ runEffect eff = do
     GrassPledge -> error "GrassPledge"
 
     BellyDrum -> do
-      let dmg = div mon2.stats.hp 2
-      when (mon2.pokemon.hp > dmg) do
-      editTarget \t -> t
-        { pokemon = t.pokemon { hp = t.pokemon.hp - dmg }
-        , boosts  = t.boosts { att=6, acc=t.boosts.acc }
+      let dmg = div targ.stats.hp 2
+      when (targ.pokemon.hp > dmg) do
+      putTarget targ
+        { pokemon = targ.pokemon { hp = targ.pokemon.hp - dmg }
+        , boosts  = targ.boosts { att=6, acc=targ.boosts.acc }
         }
 
     FilletAway -> error "FilletAway"
@@ -497,46 +506,46 @@ runEffect eff = do
       editLane1 (const field.lane2)
       editLane2 (const field.lane1)
 
-    Bide -> error "Bide"
+    Bide       -> error "Bide"
     MirrorCoat -> error "MirrorCoat"
-    Counter -> error "Counter"
+    Counter    -> error "Counter"
 
-    AquaRing -> editTarget \t -> t { aquaRing  = True }
-    Ingrain  -> editTarget \t -> t { ingrained = True }
+    AquaRing -> putTarget targ { aquaRing  = True }
+    Ingrain  -> putTarget targ { ingrained = True }
 
     DamageWithSplinters -> error "DamageWithSplinters"
-    DieHealSwitchIn -> error "DieHealSwitchIn"
-    SplashDamage -> error "SplashDamage"
-    Fling -> error "Fling"
-    FloralHealing -> error "FloralHealing"
-    FloralShield -> error "FloralShield"
+    DieHealSwitchIn     -> error "DieHealSwitchIn"
+    SplashDamage        -> error "SplashDamage"
+    Fling               -> error "Fling"
+    FloralHealing       -> error "FloralHealing"
+    FloralShield        -> error "FloralShield"
 
-    FlinchIfHit -> error "FlinchIfHit"
-    FollowMe -> error "FollowMe"
-    Foresight -> error "Foresight"
-    UseTargetAtt -> error "UseTargetAtt"
+    FlinchIfHit             -> error "FlinchIfHit"
+    FollowMe                -> error "FollowMe"
+    Foresight               -> error "Foresight"
+    UseTargetAtt            -> error "UseTargetAtt"
     SuperEffectiveAgainst _ -> error "SuperEffectiveAgainst _"
 
-    FusionBolt -> error "FusionBolt"
+    FusionBolt  -> error "FusionBolt"
     FusionFlare -> error "FusionFlare"
 
-    GearUp -> error "GearUp"
+    GearUp       -> error "GearUp"
     MagneticFlux -> error "MagneticFlux"
 
-    NoSpam -> error "NoSpam"
-    GlaiveRush -> error "GlaiveRush"
-    GlitzyGlow -> error "GlitzyGlow"
+    NoSpam      -> error "NoSpam"
+    GlaiveRush  -> error "GlaiveRush"
+    GlitzyGlow  -> error "GlitzyGlow"
     GrassyGlide -> error "GrassyGlide"
-    Grudge -> error "Grudge"
-    GyroBall -> error "GyroBall"
-    HappyHour -> error "HappyHour"
-    HealBlock -> editTarget \t -> t { healBlock = 5 }
+    Grudge      -> error "Grudge"
+    GyroBall    -> error "GyroBall"
+    HappyHour   -> error "HappyHour"
+    HealBlock   -> putTarget targ { healBlock = 5 }
     HelpingHand -> error "HelpingHand"
     HiddenPower -> error "HiddenPower"
 
     DamageUserIfMiss _ -> error "DamageUserIfMiss"
     Scaling5Turns -> error "Scaling5Turns"
-    DefenceCurlUsed -> editTarget \t -> t { defenceCurl = True }
+    DefenceCurlUsed -> putTarget targ { defenceCurl = True }
     DoubleDmgIfDefenceCurlUsed -> error "DoubleDmgIfDefenceCurlUsed"
     ClearTerrain -> editField \f -> f { terrain = Nothing }
     Imprison -> error "Imprison"
@@ -546,24 +555,24 @@ runEffect eff = do
     NoSwitchUserAndTarget -> error "NoSwitchUserAndTarget"
     Judgement -> error "Judgement"
     JungleHealing -> error "JungleHealing"
-    LaserFocus -> editTarget \t -> t { focused = True }
+    LaserFocus -> putTarget targ { focused = True }
     DoublePwrIfUserDebuff -> error "DoublePwrIfUserDebuff"
     AllOtherMovesUsed -> error "AllOtherMovesUsed"
     LastRespects -> error "LastRespects"
     LightThatBurnsTheSky -> error "LightThatBurnsTheSky"
-    LockOn -> editTarget \t -> t { lockedOn = True }
-    MagicCoat -> editTarget \t -> t { magicCoat = True }
-    MagnetRise -> editTarget \t -> t { magnetRise = 5 }
+    LockOn -> putTarget targ { lockedOn = True }
+    MagicCoat -> putTarget targ { magicCoat = True }
+    MagnetRise -> putTarget targ { magnetRise = 5 }
     Magnitude -> error "Magnitude"
     MeFirst -> error "MeFirst"
     MatchTarget'sDamage _ -> error "MatchTarget'sDamage"
     Mimic -> error "Mimic"
-    MiracleEye -> editTarget \t -> t
+    MiracleEye -> putTarget targ
       { miracleEye = True
-      , boosts = t.boosts { eva = 0 }
+      , boosts = targ.boosts { eva = 0 }
       }
     MirrorMove -> error "MirrorMove"
-    Mist -> editTarget \t -> t { mist=True }
+    Mist -> putTarget targ { mist=True }
 
     PwrInTerrain _ -> error "PwrInTerrain"
     IgnoreAbility -> error "IgnoreAbility"
@@ -575,20 +584,20 @@ runEffect eff = do
     NaturePower -> error "NaturePower"
 
     Nightmare -> do
-      when (isAsleep mon2.pokemon) do
-      editTarget \t -> t
-        { pokemon = t.pokemon
-          { hp = max 0 $ t.pokemon.hp - div t.stats.hp 4
+      when (isAsleep targ.pokemon) do
+      putTarget targ
+        { pokemon = targ.pokemon
+          { hp = max 0 $ targ.pokemon.hp - div targ.stats.hp 4
           }
         }
 
 ----
 
-editUser f =
-  modify \b -> b { mon1 = f b.mon1 }
+-- editUser f =
+--   modify \b -> b { mon1 = f b.mon1 }
 
-editTarget f =
-  modify \b -> b { mon2 = f b.mon2 }
+-- editTarget f =
+--   modify \b -> b { mon2 = f b.mon2 }
 
 editField f =
   modify \b -> b { field = f b.field }
@@ -605,17 +614,17 @@ editParty1 f =
 editParty2 f =
   modify \b -> b { party2 = f b.party2 }
 
-putTargetStatus s =
-  editTarget \mon -> mon { pokemon = mon.pokemon { status = s } }
+putTargetStatus MoveEnv {..} s = do
+  targ <- getTarget
+  putTarget targ { pokemon = targ.pokemon { status = s } }
 
--- TODO: May fail if used consequtively
-protectTarget = do
-  Battle {mon2} <- get
-  let successRate = (1/3) ** fi mon2.protections
+protectTarget MoveEnv {..} = do
+  targ <- getTarget
+  let successRate = (1/3) ** fi targ.protections
   roll <- liftIO $ randomRIO (0.0, 1.0)
   when (roll <= successRate) do
-  editTarget \t -> t
+  putTarget targ
     { protected   = True
-    , protections = succ t.protections
+    , protections = succ targ.protections
     }
 
