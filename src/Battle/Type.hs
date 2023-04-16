@@ -59,6 +59,7 @@ data BattleMon = BattleMon
    , magnetRise  :: Countdown
    , miracleEye  :: Bool
    , mist        :: Bool -- can be passed with baton pass
+   , protections :: Int  -- consequtive turns having used protection moves
    }
 
 newBattleMon api pok = BattleMon
@@ -107,6 +108,7 @@ newBattleMon api pok = BattleMon
   , magnetRise  = 0
   , miracleEye  = False
   , mist        = False
+  , protections = 0
   }
 
 ----

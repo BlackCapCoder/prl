@@ -142,17 +142,29 @@ onFoeDefeated = do
     modify \b -> b { mon1 = b.mon1 { pokemon = addEVs evs b.mon1.pokemon } }
 
   flushMon
+
+  when (mon2.destinyBond > 0) do
+    tell $ pokemonName api mon1.pokemon <> " fainted because of destiny bond"
+    modify \b -> b { mon1 = b.mon1 { pokemon = b.mon1.pokemon {hp=0} } }
+    pause
+    forcedSwitch
+
   pure False -- continue?
 
 onAllyDefeated = do
   flushMon
 
-  Battle {mon1,party1} <- get
+  Battle {mon1,party1,mon2} <- get
   World.World {settings, api} <- lift get
 
-  let continue = not $ all (\m -> m.hp == 0) party1
-
   tell $ pokemonName api mon1.pokemon <> " fainted"
+
+  when (mon1.destinyBond > 0) do
+    tell $ "The opposing " <> pokemonName api mon2.pokemon <> " fainted because of destiny bond"
+    modify \b -> b { mon2 = b.mon2 { pokemon = b.mon2.pokemon {hp=0} } }
+
+  -- TODO: The battle might also be over because of destiny bond
+  let continue = not $ all (\m -> m.hp == 0) party1
 
   when continue do
     pause
@@ -201,10 +213,10 @@ endOfTurn = do
 ----
 
 tickDrowsy mon
-  | mon.drowsy && isNothing mon.pokemon.status = pure mon
+  | not mon.drowsy || isJust mon.pokemon.status = pure mon
   | otherwise = do
       World.World {settings, api} <- lift get
-      tell $ pokemonName api mon.pokemon <> " fell asleep"
+      tell $ pokemonName api mon.pokemon <> " fell asleep (drowsy)"
       turns <- liftIO $ randomRIO (1, 3)
       pure mon { pokemon = mon.pokemon { status = Just (Sleep turns) } }
 
@@ -228,7 +240,6 @@ tickTurnMon mon = mon
   , healBlock   = max 0 $ pred mon.healBlock
   , luckyChant  = max 0 $ pred mon.luckyChant
   , dynamax     = max 0 $ pred mon.dynamax
-  -- , confusion   = max 0 $ pred mon.confusion
   , embargo     = max 0 $ pred mon.embargo
   , destinyBond = max 0 $ pred mon.destinyBond
   , magnetRise  = max 0 $ pred mon.magnetRise
@@ -238,6 +249,7 @@ tickTurnMon mon = mon
       Just (_, 1)  -> Nothing
       Just (i, n)  -> Just (i, pred n)
   , disabled = goDisabled mon.disabled
+  , protections = if mon.protected then mon.protections else 0
   }
   where
     goDisabled [] = []
@@ -573,23 +585,23 @@ performMove'' move = do
 
   modifyMove move \m -> m { pp = max 0 (pred m.pp) }
 
-  let cat = case m.damage_class.name of
-        "physical" -> Move.Physical
-        "special"  -> Move.Special
-        _          -> Move.Status
-
-  let ty = maybe NON (\t -> TYPE.typeFromName t.name) m._type
-
-  when (cat /= Move.Status) do
-    runBasicAttackResult =<< basicAttack move.id ty (cat == Move.Physical) 50 mon1 mon2
-
   case move2moveDesc move of
-    Nothing -> pure ()
     Just md -> do
-      tell $ "Effect: " <> show md.move.eff
-      runEffect md.move.eff
+      runPMove move.id md.move
 
-  pure ()
+    Nothing -> do
+      tell "! No PMove"
+
+      let cat = case m.damage_class.name of
+            "physical" -> Move.Physical
+            "special"  -> Move.Special
+            _          -> Move.Status
+
+      let pwr = fromMaybe 0 move.power
+
+      when (cat /= Move.Status) do
+        let ty = maybe NON (\t -> TYPE.typeFromName t.name) m._type
+        runBasicAttackResult =<< basicAttack move.id ty (cat == Move.Physical) pwr mon1 mon2
 
 modifyMove move f = do
   modify \Battle {..} -> Battle
@@ -605,6 +617,18 @@ modifyMove move f = do
     go (m:ms)
       | m.id == move.id = f m : ms
       | otherwise       = m : go ms
+
+runPMove mid mov = do
+  World.World {..} <- lift get
+  Battle {..} <- get
+
+  when (mov.cat /= Pok.Status) do
+    runBasicAttackResult =<< basicAttack mid mov.ty (mov.cat == Pok.Physical) mov.pow mon1 mon2
+
+  tell $ "Effect: " <> show mov.eff
+  runEffect mov.eff
+
+  pure ()
 
 ----
 

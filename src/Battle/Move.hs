@@ -368,17 +368,16 @@ runEffect eff = do
           }
         }
 
-    -- TODO: May fail if used consequtively
     Protect ->
-      editTarget \t -> t { protected = True }
+      protectTarget
 
     -- TODO: Attack drop
     KingShield ->
-      editTarget \t -> t { protected = True }
+      protectTarget
 
     -- TODO: Poison
     BanefulBunker ->
-      editTarget \t -> t { protected = True }
+      protectTarget
 
     WideGuard ->
       editTarget \t -> t { wideGuard = True }
@@ -608,4 +607,15 @@ editParty2 f =
 
 putTargetStatus s =
   editTarget \mon -> mon { pokemon = mon.pokemon { status = s } }
+
+-- TODO: May fail if used consequtively
+protectTarget = do
+  Battle {mon2} <- get
+  let successRate = (1/3) ** fi mon2.protections
+  roll <- liftIO $ randomRIO (0.0, 1.0)
+  when (roll <= successRate) do
+  editTarget \t -> t
+    { protected   = True
+    , protections = succ t.protections
+    }
 
