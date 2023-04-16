@@ -96,11 +96,11 @@ mainLoop = do
 
     Just Lost -> do
       continue <- onAllyDefeated
-      when continue mainLoop
+      when continue endOfTurn
 
     Just Won -> do
       continue <- onFoeDefeated
-      when continue mainLoop
+      when continue endOfTurn
 
     Nothing -> do
       pause
@@ -113,12 +113,12 @@ mainLoop = do
           tell $ "The opposing " <> pokemonName api mon2.pokemon <> " ran away!"
         Just Lost -> do
           continue <- onFoeDefeated
-          when continue mainLoop
+          when continue endOfTurn
         Just Won -> do
           continue <- onAllyDefeated
-          when continue mainLoop
+          when continue endOfTurn
         Nothing ->
-          mainLoop
+          endOfTurn
 
 ----
 
@@ -167,6 +167,71 @@ forcedSwitch = do
     }
 
   tell $ pokemonName api mon <> " was sent out!"
+
+endOfTurn = do
+  modify \Battle {..} -> Battle
+    { mon1 = tickTurnMon mon1
+    , mon2 = tickTurnMon mon2
+    , ..
+    }
+
+  statusDamage
+  swapField *> statusDamage *> swapField
+
+  perishTick
+  swapField *> perishTick *> swapField
+
+  mainLoop
+
+----
+
+tickTurnMon mon = mon
+  { enduring    = False
+  , protected   = False
+  , wideGuard   = False
+  , flinched    = False
+  , snatching   = False
+  , taunt       = max 0 $ pred mon.taunt
+  , torment     = max 0 $ pred mon.torment
+  , healBlock   = max 0 $ pred mon.healBlock
+  , luckyChant  = max 0 $ pred mon.luckyChant
+  , dynamax     = max 0 $ pred mon.dynamax
+  , confusion   = max 0 $ pred mon.confusion
+  , embargo     = max 0 $ pred mon.embargo
+  , destinyBond = max 0 $ pred mon.destinyBond
+  , magnetRise  = max 0 $ pred mon.magnetRise
+  , perishCount = mon.perishCount <&> pred
+  , encore = case mon.encore of
+      Nothing      -> Nothing
+      Just (_, 1)  -> Nothing
+      Just (i, n)  -> Just (i, pred n)
+  , disabled = goDisabled mon.disabled
+  }
+  where
+    goDisabled [] = []
+    goDisabled ((i,n):as)
+      | n == 1 = goDisabled as
+      | let    = (i, pred n) : goDisabled as
+
+statusDamage = do
+  Battle {..} <- get
+  let maxhp = mon1.stats.hp
+  case mon1.pokemon.status of
+    Just Burn      -> editHP \h -> max 0 $ h - max 1 do div maxhp 16
+    Just Poison    -> editHP \h -> max 0 $ h - max 1 do div maxhp 8
+    Just (Toxic n) -> do
+      put Battle {mon1 = mon1 {pokemon = mon1.pokemon { status = Just (Toxic (succ n)) }}, ..}
+      -- TODO: Poison heal
+      editHP \h -> max 0 $ h - max 1 do div (maxhp*(n+1)) 16
+    _ -> pure ()
+
+perishTick = do
+  Battle {..} <- get
+  when (mon1.perishCount == Just 0) do
+  editHP (const 0)
+
+editHP f = do
+  modify \b -> b {mon1 = b.mon1 { pokemon = b.mon1.pokemon { hp=f b.mon1.pokemon.hp } }}
 
 ----
 
