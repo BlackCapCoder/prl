@@ -5,6 +5,7 @@ import Pokemon.PokeAPI qualified as API
 import Pokemon.Pokemon
 import Pokemon.Stat
 import Prelude hiding (Field)
+import Data.IntSet (IntSet)
 
 
 type Countdown = Int
@@ -44,6 +45,8 @@ data BattleMon = BattleMon
    , confusion   :: Countdown
    , embargo     :: Countdown
    , lastDamage  :: Int
+   , attraction  :: IntSet -- uid's of pokemon we are attracted to
+   , cursed      :: Bool
    }
 
 newBattleMon api pok = BattleMon
@@ -78,6 +81,8 @@ newBattleMon api pok = BattleMon
   , confusion   = -1
   , embargo     = 0
   , lastDamage  = 0
+  , attraction  = mempty
+  , cursed      = False
   }
 
 ----
@@ -90,6 +95,7 @@ data Field = Field
    , magicRoom    :: Countdown
    , wonderRoom   :: Countdown
    , mudSport     :: Countdown
+   , gravity      :: Countdown
    }
 
 newField = Field
@@ -101,6 +107,7 @@ newField = Field
   , magicRoom  = 0
   , wonderRoom = 0
   , mudSport   = 0
+  , gravity    = 0
   }
 
 

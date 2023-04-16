@@ -76,6 +76,7 @@ data Effect
    | Gravity
    | TrickRoom
    | MagicRoom
+   | WonderRoom
    | Tailwind
    | LuckyChant -- foes cannot land crits for 5 turns
 
@@ -122,7 +123,7 @@ data Effect
    | Recharge  -- The move is performed, but the user must skip the next turn
    | Precharge -- The user skips this turn, the move is performed next turn
 
-   | SwapAttDef -- swap att and def (user)
+   | SwapAttDef -- swap att and def
    | AvgAtt     -- average att and spA with target
    | SwpAtt     -- swap att and spA with targer
    | AvgDef     -- average def and spD with target
