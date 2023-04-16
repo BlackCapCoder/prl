@@ -6,12 +6,14 @@ module Battle
 
 import Battle.Type
 import Battle.BasicAttack
+import Battle.Move
 import Pokemon.Nature
 import Pokemon.PokeAPI qualified as API
 import Pokemon.Pokemon
 import Pokemon.Type as TYPE
 import Pokemon.Stat
 import Pokemon.Level
+import Pokemon.Move qualified as Pok
 import Settings
 import System.Random
 import Prelude hiding (Field)
@@ -26,8 +28,10 @@ import Data.Text qualified as Text
 import Data.IntMap qualified as IM
 import World qualified
 import Data.List (elem)
+import Data.List qualified as L
 import StyledString
 import Data.Vector qualified as V
+import Data.Text qualified as T
 
 ----
 
@@ -386,7 +390,7 @@ selectMove = do
         | null moves = maybeToList $ IM.lookup struggleID api.moves <&> (,"")
         | otherwise  = moves
 
-  let opts = moves' <&> \(m,pp) -> pp <> Text.unpack m.name
+  let opts = moves' <&> \(m,pp) -> pp <> Text.unpack (moveName m)
 
   let canSelect n = n < length opts
 
@@ -544,7 +548,7 @@ performMove'' move = do
   Battle {..} <- get
 
   let Just m = IM.lookup move.id api.moves
-  tell $ pokemonName api mon1.pokemon <> " used " <> Text.unpack m.name
+  tell $ pokemonName api mon1.pokemon <> " used " <> Text.unpack (moveName m)
 
   modifyMove move \m -> m { pp = max 0 (pred m.pp) }
 
@@ -558,7 +562,13 @@ performMove'' move = do
   when (cat /= Move.Status) do
     runBasicAttackResult =<< basicAttack move.id ty (cat == Move.Physical) 50 mon1 mon2
 
-    pure ()
+  case move2moveDesc move of
+    Nothing -> pure ()
+    Just md -> do
+      tell $ "Effect: " <> show md.move.eff
+      runEffect md.move.eff
+
+  pure ()
 
 modifyMove move f = do
   modify \Battle {..} -> Battle
@@ -826,4 +836,19 @@ giveExp = do
 
 onLevelUp = do
   pure ()
+
+----
+
+englishMoveName :: API.Move -> Maybe T.Text
+englishMoveName move =
+  L.find f move.names <&> \x -> x.name
+  where
+    f x = x.language.name == "en"
+
+moveName move =
+  fromMaybe move.name $ englishMoveName move
+
+move2moveDesc :: API.Move -> Maybe Pok.MoveDesc
+move2moveDesc move = L.find (\d -> d.name == n) Pok.moves
+  where n = T.unpack $ moveName move
 

@@ -349,6 +349,7 @@ data Move = Move
    , accuracy     :: Maybe Int
    , damage_class :: NamedAPIResource
    , _type        :: Maybe NamedAPIResource
+   , names        :: [Name]
    }
    deriving (Show, Eq, Ord)
 
