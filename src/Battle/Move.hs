@@ -52,7 +52,11 @@ runEffect eff = do
     Curse -> do
       if GHO `elem` mon1.pokemon.types
       then do
-        -- TODO: damage user 25%
+        editUser \u -> u
+          { pokemon = u.pokemon
+            { hp = max 0 $ u.pokemon.hp - div u.stats.hp 4
+            }
+          }
         editTarget \mon -> mon { cursed = True }
       else do
         editUser \mon -> mon { boosts = mon.boosts + zero {att=1,def=1,spe= -1,acc=0} }
@@ -323,8 +327,263 @@ runEffect eff = do
         }
       }
 
+    CutPwrUserHP   -> error "CutPwrUserHP"
+    RaisePwrUserHP -> error "RaisePwrUserHP"
+    AddPwr         -> error "AddPwr"
+    UseDef         -> error "UseDef"
 
+    DoublePwrNoItem          -> error "DoublePwrNoItem"
+    DoublePwrIfHit           -> error "DoublePwrIfHit"
+    DoublePwrIfTargetFaster  -> error "DoublePwrIfTargetFaster"
+    DoublePwrIfTargetSlower  -> error "DoublePwrIfTargetSlower"
+    DoubleDmgIfTargetStatus  -> error "DoubleDmgIfTargetStatus"
+    DoublePwrIfUserStatus    -> error "DoublePwrIfUserStatus"
+    DoubleDmgIfDynamax       -> error "DoubleDmgIfDynamax"
+    DoublePwrIfTargetHalfHP  -> error "DoublePwrIfTargetHalfHP"
+    CrushGrip                -> error "CrushGrip"
+    DoublePowerIfInvul _     -> error "DoublePowerIfInvul"
 
+    PwrLowFriendship   -> error "PwrLowFriendship"
+    PwrHighFriendship  -> error "PwrHighFriendship"
+    PwrHeavyTarget     -> error "PwrHeavyTarget"
+    PwrHeavyUser       -> error "PwrHeavyUser"
+    PwrInHarshSunlight -> error "PwrInHarshSunlight"
+
+    EchoPower  -> error "EchoPower"
+    SpeedPower -> error "SpeedPower"
+
+    Recoil _ -> error "Recoil"
+
+    Struggle ->
+      editUser \u -> u
+        { pokemon = u.pokemon
+          { hp = max 0 $ u.pokemon.hp - div u.stats.hp 4
+          }
+        }
+
+    RecoilMax n ->
+      editUser \u -> u
+        { pokemon = u.pokemon
+          { hp = max 0 $ u.pokemon.hp - round (fi u.stats.hp * n)
+          }
+        }
+
+    -- TODO: May fail if used consequtively
+    Protect ->
+      editTarget \t -> t { protected = True }
+
+    -- TODO: Attack drop
+    KingShield ->
+      editTarget \t -> t { protected = True }
+
+    -- TODO: Poison
+    BanefulBunker ->
+      editTarget \t -> t { protected = True }
+
+    WideGuard ->
+      editTarget \t -> t { wideGuard = True }
+
+    Substitute -> do
+      when (mon2.subHP < 1) do
+      let health = div mon2.stats.hp 4
+      when (mon2.pokemon.hp > health) do
+      editTarget \t -> t
+        { subHP = health
+        , pokemon = t.pokemon { hp = t.pokemon.hp - health }
+        }
+
+    IgnoreProtect _ -> error "IgnoreProtect"
+
+    Endure -> editTarget \t -> t
+      { enduring = True }
+
+    Don'tKill -> error "Don'tKill"
+
+    FinalGambit -> error "FinalGambit"
+    BeakBlast -> error "BeakBlast"
+    ShieldTrap -> error "ShieldTrap"
+
+    DestinyBond -> editTarget \t -> t
+      { destinyBond = 1 }
+
+    Wish -> error "Wish"
+    Delay2Turns -> error "Delay2Turns"
+
+    UserPrimary -> error "UserPrimary"
+    ExtraType _ -> error "ExtraType"
+
+    Snatch -> editTarget \t -> t
+      { snatching = True }
+
+    Instruct -> error "Instruct"
+    AllySwap -> error "AllySwap"
+
+    Taunt   -> editTarget \t -> t { taunt  = 3 }
+    Embargo -> editTarget \t -> t { embargo = 3 }
+    Encore  -> error "Encore"
+    Disable -> error "Disable"
+    Metronome -> error "Metronome"
+    Assist -> error "Assist"
+    AfterYou -> error "AfterYou"
+    MorpekoMode -> error "MorpekoMode"
+
+    UserDies -> editUser \u -> u
+      { pokemon = u.pokemon { hp = 0 } }
+
+    Autotomize -> error "Autotomize"
+    AxeKick -> error "AxeKick"
+    BaddyBad -> error "BaddyBad"
+    BeatUp -> error "BeatUp"
+    Belch -> error "Belch"
+    Bestow -> error "Bestow"
+    BodyPress -> error "BodyPress"
+    EatBerry -> error "EatBerry"
+
+    BurnIfBoosted -> do
+      when (isNothing mon2.pokemon.status && any (>0) mon2.boosts) do
+      putTargetStatus (Just Pok.Burn)
+
+    Captivate -> do
+      when ( mon1.pokemon.gender /= Genderless
+          && mon2.pokemon.gender /= Genderless
+          && mon1.pokemon.gender /= mon2.pokemon.gender
+           ) do
+      editTarget \t -> t
+        { boosts = t.boosts + zero { spA= -2, acc=0 } }
+
+    Charge -> editTarget \t -> t { charged = True }
+
+    ChillyReception -> error "ChillyReception"
+    BoostSuperEffective -> error "BoostSuperEffective"
+    Comeuppance -> error "Comeuppance"
+    Conversion -> error "Conversion"
+    Conversion2 -> error "Conversion2"
+    Copycat -> error "Copycat"
+    CoreEnforcer -> error "CoreEnforcer"
+
+    RemoveItem -> editTarget \t -> t
+      { pokemon = t.pokemon { heldItem = Nothing } }
+
+    StealItem -> do
+      editTarget \t -> t { pokemon = t.pokemon { heldItem = Nothing } }
+      when (isNothing mon1.pokemon.heldItem) do
+      editUser \u -> u { pokemon = u.pokemon { heldItem = mon2.pokemon.heldItem } }
+
+    Safeguard -> editLane2 \l -> l
+      { safeguard = 3 }
+
+    CraftyShield -> error "CraftyShield"
+    Defog -> error "Defog"
+    RemovePP _ -> error "RemovePP"
+    ExpandingForce -> error "ExpandingForce"
+    NoFleeingNextTurn -> error "NoFleeingNextTurn"
+
+    FirePledge  -> error "FirePledge"
+    WaterPledge -> error "WaterPledge"
+    GrassPledge -> error "GrassPledge"
+
+    BellyDrum -> do
+      let dmg = div mon2.stats.hp 2
+      when (mon2.pokemon.hp > dmg) do
+      editTarget \t -> t
+        { pokemon = t.pokemon { hp = t.pokemon.hp - dmg }
+        , boosts  = t.boosts { att=6, acc=t.boosts.acc }
+        }
+
+    FilletAway -> error "FilletAway"
+
+    -- TODO: This will swap things like tailwind, screens and safeguard.
+    -- Verify that this is correct behavior
+    SwapFieldEffects -> do
+      editLane1 (const field.lane2)
+      editLane2 (const field.lane1)
+
+    Bide -> error "Bide"
+    MirrorCoat -> error "MirrorCoat"
+    Counter -> error "Counter"
+
+    AquaRing -> editTarget \t -> t { aquaRing  = True }
+    Ingrain  -> editTarget \t -> t { ingrained = True }
+
+    DamageWithSplinters -> error "DamageWithSplinters"
+    DieHealSwitchIn -> error "DieHealSwitchIn"
+    SplashDamage -> error "SplashDamage"
+    Fling -> error "Fling"
+    FloralHealing -> error "FloralHealing"
+    FloralShield -> error "FloralShield"
+
+    FlinchIfHit -> error "FlinchIfHit"
+    FollowMe -> error "FollowMe"
+    Foresight -> error "Foresight"
+    UseTargetAtt -> error "UseTargetAtt"
+    SuperEffectiveAgainst _ -> error "SuperEffectiveAgainst _"
+
+    FusionBolt -> error "FusionBolt"
+    FusionFlare -> error "FusionFlare"
+
+    GearUp -> error "GearUp"
+    MagneticFlux -> error "MagneticFlux"
+
+    NoSpam -> error "NoSpam"
+    GlaiveRush -> error "GlaiveRush"
+    GlitzyGlow -> error "GlitzyGlow"
+    GrassyGlide -> error "GrassyGlide"
+    Grudge -> error "Grudge"
+    GyroBall -> error "GyroBall"
+    HappyHour -> error "HappyHour"
+    HealBlock -> editTarget \t -> t { healBlock = 5 }
+    HelpingHand -> error "HelpingHand"
+    HiddenPower -> error "HiddenPower"
+
+    DamageUserIfMiss _ -> error "DamageUserIfMiss"
+    Scaling5Turns -> error "Scaling5Turns"
+    DefenceCurlUsed -> editTarget \t -> t { defenceCurl = True }
+    DoubleDmgIfDefenceCurlUsed -> error "DoubleDmgIfDefenceCurlUsed"
+    ClearTerrain -> editField \f -> f { terrain = Nothing }
+    Imprison -> error "Imprison"
+    RemoveBerry _ -> error "RemoveBerry"
+
+    IonDeluge -> error "IonDeluge"
+    NoSwitchUserAndTarget -> error "NoSwitchUserAndTarget"
+    Judgement -> error "Judgement"
+    JungleHealing -> error "JungleHealing"
+    LaserFocus -> editTarget \t -> t { focused = True }
+    DoublePwrIfUserDebuff -> error "DoublePwrIfUserDebuff"
+    AllOtherMovesUsed -> error "AllOtherMovesUsed"
+    LastRespects -> error "LastRespects"
+    LightThatBurnsTheSky -> error "LightThatBurnsTheSky"
+    LockOn -> editTarget \t -> t { lockedOn = True }
+    MagicCoat -> editTarget \t -> t { magicCoat = True }
+    MagnetRise -> editTarget \t -> t { magnetRise = 5 }
+    Magnitude -> error "Magnitude"
+    MeFirst -> error "MeFirst"
+    MatchTarget'sDamage _ -> error "MatchTarget'sDamage"
+    Mimic -> error "Mimic"
+    MiracleEye -> editTarget \t -> t
+      { miracleEye = True
+      , boosts = t.boosts { eva = 0 }
+      }
+    MirrorMove -> error "MirrorMove"
+    Mist -> editTarget \t -> t { mist=True }
+
+    PwrInTerrain _ -> error "PwrInTerrain"
+    IgnoreAbility -> error "IgnoreAbility"
+
+    RecoverWeather -> error "RecoverWeather"
+    MudSport -> editField \l -> l { mudSport = 3 }
+    MultiAttack -> error "MultiAttack"
+    NaturalGift -> error "NaturalGift"
+    NaturePower -> error "NaturePower"
+
+    Nightmare -> do
+      when (isAsleep mon2.pokemon) do
+      editTarget \t -> t
+        { pokemon = t.pokemon
+          { hp = max 0 $ t.pokemon.hp - div t.stats.hp 4
+          }
+        }
+
+----
 
 editUser f =
   modify \b -> b { mon1 = f b.mon1 }
@@ -349,6 +608,4 @@ editParty2 f =
 
 putTargetStatus s =
   editTarget \mon -> mon { pokemon = mon.pokemon { status = s } }
-
-
 

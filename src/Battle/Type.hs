@@ -29,7 +29,7 @@ data BattleMon = BattleMon
    , choice      :: Maybe ID -- locked into a move due to a held choice item
    , suppressed  :: Bool -- ability suppressed
    , transformed :: Bool -- is this pokemon transformed?
-   , healBlocked :: Bool -- prevented from using healing moves?
+   , healBlock   :: Countdown -- prevented from using healing moves?
    , leeched     :: Bool -- suffering from leech seed?
    , ingrained   :: Bool
    , aquaRing    :: Bool
@@ -47,6 +47,18 @@ data BattleMon = BattleMon
    , lastDamage  :: Int
    , attraction  :: IntSet -- uid's of pokemon we are attracted to
    , cursed      :: Bool
+   , subHP       :: Int -- substitute HP
+   , enduring    :: Bool
+   , destinyBond :: Countdown
+   , snatching   :: Bool
+   , charged     :: Bool
+   , defenceCurl :: Bool
+   , focused     :: Bool
+   , lockedOn    :: Bool
+   , magicCoat   :: Bool
+   , magnetRise  :: Countdown
+   , miracleEye  :: Bool
+   , mist        :: Bool -- can be passed with baton pass
    }
 
 newBattleMon api pok = BattleMon
@@ -66,7 +78,6 @@ newBattleMon api pok = BattleMon
   , leeched     = False
   , imprissoned = []
   , transformed = False
-  , healBlocked = False
   , ingrained   = False
   , aquaRing    = False
   , drowsy      = False
@@ -83,6 +94,19 @@ newBattleMon api pok = BattleMon
   , lastDamage  = 0
   , attraction  = mempty
   , cursed      = False
+  , subHP       = 0
+  , enduring    = False
+  , destinyBond = 0
+  , snatching   = False
+  , charged     = False
+  , healBlock   = 0
+  , defenceCurl = False
+  , focused     = False
+  , lockedOn    = False
+  , magicCoat   = False
+  , magnetRise  = 0
+  , miracleEye  = False
+  , mist        = False
   }
 
 ----
@@ -116,6 +140,7 @@ data FieldLane = FieldLane
    , reflect     :: Countdown
    , auroraveil  :: Countdown
    , tailwind    :: Countdown
+   , safeguard   :: Countdown
    , spikes      :: Int
    , toxicSpikes :: Int
    , rocks       :: Bool
@@ -129,6 +154,7 @@ newFieldLane = FieldLane
   , tailwind    = 0
   , spikes      = 0
   , toxicSpikes = 0
+  , safeguard   = 0
   , rocks       = False
   , web         = False
   }

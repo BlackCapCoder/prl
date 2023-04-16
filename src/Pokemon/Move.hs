@@ -301,7 +301,7 @@ data Effect
    | Judgement -- type depends on arceus plate being held
    | JungleHealing -- Restore team's HP and cures status conditions
    | LaserFocus -- next hit is guaranteed to crit
-   | DoublePwrIfUserDebuff -- double power if used received a debuff this turn
+   | DoublePwrIfUserDebuff -- double power if user received a debuff this turn
    | AllOtherMovesUsed -- Move fails unless all other moves have been used (last resort)
    | LastRespects -- increase power the more allies have been defeated
    | LightThatBurnsTheSky -- ignores target ability; uses highest attack stat
