@@ -181,6 +181,16 @@ endOfTurn = do
   perishTick
   swapField *> perishTick *> swapField
 
+<<<<<<< HEAD
+=======
+  -- TODO: pokemon may have died
+
+  modify \Battle {..} -> Battle
+    { field = tickTurnField field
+    , ..
+    }
+
+>>>>>>> 69e50ed (end-of-turn effects)
   mainLoop
 
 ----
@@ -213,6 +223,34 @@ tickTurnMon mon = mon
       | n == 1 = goDisabled as
       | let    = (i, pred n) : goDisabled as
 
+<<<<<<< HEAD
+=======
+tickTurnLane l = l
+  { lightScreen = max 0 $ pred l.lightScreen
+  , reflect     = max 0 $ pred l.reflect
+  , auroraveil  = max 0 $ pred l.auroraveil
+  , tailwind    = max 0 $ pred l.tailwind
+  , safeguard   = max 0 $ pred l.safeguard
+  }
+
+tickTurnField f = f
+  { lane1      = tickTurnLane f.lane1
+  , lane2      = tickTurnLane f.lane2
+  , trickRoom  = max 0 $ pred f.trickRoom
+  , magicRoom  = max 0 $ pred f.magicRoom
+  , wonderRoom = max 0 $ pred f.wonderRoom
+  , mudSport   = max 0 $ pred f.mudSport
+  , gravity    = max 0 $ pred f.gravity
+  , weather    = may f.weather
+  , terrain    = may f.terrain
+  }
+  where
+    may = \case
+      Nothing     -> Nothing
+      Just (i, 1) -> Nothing
+      Just (i, n) -> Just (i, pred n)
+
+>>>>>>> 69e50ed (end-of-turn effects)
 statusDamage = do
   Battle {..} <- get
   let maxhp = mon1.stats.hp
