@@ -311,8 +311,10 @@ handleBattleAction act = do
     Run ->
       pure $ Just RanAway
 
-    UseItem item ->
-      pure Nothing -- Just <$> useItem item
+    UseItem item -> do
+      capture
+      pure (Just Won)
+      -- pure Nothing -- Just <$> useItem item
 
     Switch  mon  -> do
       Battle {mon1} <- get
@@ -632,7 +634,7 @@ runPMove mid mov = do
         , putTarget = \a -> modify \b -> b {mon2 = a}
         }
 
-  tell $ "Effect: " <> show mov.eff
+  -- tell $ "Effect: " <> show mov.eff
   runEffect env mov.eff
 
   pure ()

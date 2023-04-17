@@ -73,8 +73,8 @@ initialWorld = do
   Just (h, w) <- getTerminalSize
   let world = World
         { wm             = worldMap
-        -- , pl             = Pos 4 (V2 4 3)
-        , pl             = Pos 7 (V2 20 10)
+        , pl             = Pos 4 (V2 4 3)
+        -- , pl             = Pos 7 (V2 20 10)
         , menuCursor     = 0
         , twidth         = w
         , theight        = h
@@ -83,7 +83,7 @@ initialWorld = do
         , bagItems       = mempty & IM.insert 0 1
         , pcItems        = mempty & IM.insert 1 1
         , api            = api
-        , party          = [mon1 {level=100}, mon2, mon3]
+        , party          = [mon1, mon2, mon3]
         , respawnLoc     = pl world
         , encounterGraze = 0
         , unique         = 3
