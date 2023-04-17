@@ -97,6 +97,7 @@ data Effect
    | ClearStatusParty -- all ally pokemon in party
    | ClearScreen
    | ClearHazard
+   | MoveStatus -- transfer users status to target
 
    | AddBoost Bool (Boost Int) -- if true, target the user
    | AddBoostIfKO  (Boost Int) -- give user boost if attack KO's
@@ -123,9 +124,10 @@ data Effect
    | Recharge  -- The move is performed, but the user must skip the next turn
    | Precharge -- The user skips this turn, the move is performed next turn
 
-   | SwapAttDef -- swap att and def
-   | AvgAtt     -- average att and spA with target
-   | SwpAtt     -- swap att and spA with targer
+   | SwapAttDef -- swap att and def (power trick)
+   | SwapOffDef -- swap users offensive/defensive stats (power shift)
+   | AvgAtt     -- average att and spA with target (power split)
+   | SwpAtt     -- swap att and spA with targer (power swap)
    | AvgDef     -- average def and spD with target
    | SwpDef     -- swap def and spD with targer
 
@@ -217,7 +219,7 @@ data Effect
    | Belch -- User must have consumed a berry
    | Bestow -- User gives held item to target
    | BodyPress -- The higher the user's defence, the stronger the attack
-   | EatBerry
+   | EatBerry -- user eats the targets berry
    | BurnIfBoosted
    | Captivate -- sharpely lower spA if opposite gender
    | Charge -- raises spD and next elec move deals more damage
@@ -316,7 +318,7 @@ data Effect
    | MirrorMove -- perform the target's last move
    | Mist -- User's stat changes cannot be changed "for a period of time"
 
-   | PwrInTerrain Terrain -- power increases in the given terrain (misty explosion)
+   | PwrInTerrain Terrain -- power increases in the given terrain (misty explosion, psyblade)
    | IgnoreAbility -- Ignore the targets ability
 
    | RecoverWeather -- Recover an amount of health that varies with weather
@@ -325,6 +327,24 @@ data Effect
    | NaturalGift -- power and type depends on held berry
    | NaturePower -- Uses a certain move based on current terrain
    | Nightmare -- 0.25 damage to sleeping target
+
+   | Obstruct -- protect. sharply lower defence on contact
+   | Octolock -- lower target def,spD every turn, prevent switching out
+   | OdorSleuth -- Reset target eva. allow normal and fight to hit ghost
+
+   | PayDay -- money after battle depending on users level
+   | DoublePwrIfUserAttacked -- on this turn
+   | UseHighestOfAttSpA
+   | PikaPapow -- Power increases when player's bond is stronger
+
+   | PollenPuff -- damage if foe, heal if ally
+   | Poltergeist -- fail if target does not have a held item
+   | Powder -- damages pokemon using fire-type moves
+   | Present -- random damage or heal (present)
+   | Psywave -- Inflict damage 50%-150% of user's level
+   | Punishment -- Power increases when opponent's stats have been raised
+   | Purify -- heal target's status condition. If successful, restore users HP
+   | Pursuit -- if target switches out, hit with double power
 
    deriving (Show, Eq, Ord)
 
@@ -478,7 +498,7 @@ moves =
   , MoveDesc "Anchor Shot" 20 tackle
       {ty=STE, pow=80, eff=NoSwitch, flags=CONTACT}
   , MoveDesc "Ancient Power" 5 tackle
-      {ty=ROC, pow=60, cat=Special, eff=10 :% AddBoost True one {eva=0,acc=0,cri=0}}
+      {ty=ROC, pow=60, cat=Special, eff=10 :% omniboost}
   , MoveDesc "Apple Acid" 10 tackle
       {ty=GRA, cat=Special, pow=80, eff=AddBoost False zero {spD = -1}}
   , MoveDesc "Aqua Cutter" 20 tackle
@@ -1432,13 +1452,159 @@ moves =
   , MoveDesc "Nightmare" 15 tackle
       {ty=GHO, cat=Special, pow=0, eff=Nightmare}
   , MoveDesc "No Retreat" 5 celebrate
-      {ty=FIG, eff=NoSwitch :+ AddBoost True zero {att=1,def=1,spA=1,spD=1,spe=1}}
+      {ty=FIG, eff=NoSwitch :+ omniboost}
   , MoveDesc "Noble Roar" 30 celebrate
       {ty=NOR, targ=ADJACENT, eff=AddBoost False zero {att= -1, spA= -1}}
   , MoveDesc "Noxious Torque" 10 tackle
       {ty=POI, pow=100}
   , MoveDesc "Nuzzle" 20 tackle
       {ty=ELE, pow=20, eff=EStatus Paralysis}
+
+  , MoveDesc "Oblivion Wing" 10 tackle
+      {ty=FLY, cat=Special, pow=80, eff=Drain 0.75}
+  , MoveDesc "Obstruct" 10 celebrate
+      {ty=DAR, eff=Obstruct}
+  , MoveDesc "Oceanic Operetta" 1 tackle
+      {ty=WAT, flags=ZMOVE, cat=Special, pow=195}
+  , MoveDesc "Octazooka" 10 tackle
+      {ty=WAT, cat=Special, pow=65, acc=85, eff=50 :% AddBoost False zero {acc= -1}}
+  , MoveDesc "Octolock" 15 celebrate
+      {ty=FIG, targ=ADJACENT, eff=Octolock}
+  , MoveDesc "Odor Sleuth" 40 celebrate
+      {ty=NOR, targ=ADJACENT, eff=OdorSleuth}
+  , MoveDesc "Ominous Wind" 5 tackle
+      {ty=GHO, cat=Special, pow=65, eff=10 :% omniboost}
+  , MoveDesc "Order Up" 10 tackle
+      {ty=DRA, pow=80}
+  , MoveDesc "Origin Pulse" 10 tackle
+      {ty=WAT, cat=Special, pow=110, acc=85, targ=ADJFOES .|. WIDE}
+  , MoveDesc "Outrage" 10 tackle
+      {ty=DRA, pow=120, eff=Locked}
+  , MoveDesc "Overdrive" 10 tackle
+      {ty=ELE, cat=Special, pow=80, targ=ADJFOES .|. WIDE}
+  , MoveDesc "Overheat" 5 tackle
+      {ty=FIR, cat=Special, pow=130, acc=90, eff=AddBoost True zero {spA= -2}}
+
+  , MoveDesc "Pain Split" 20 celebrate
+      {ty=NOR, targ=ADJACENT, eff=PainSplit}
+  , MoveDesc "Parabolic Charge" 20 tackle
+      {ty=ELE, cat=Special, pow=65, eff=Drain 0.5}
+  , MoveDesc "Parting Shot" 20 celebrate
+      {ty=DAR, targ=ADJACENT, eff=AddBoost False zero {att= -2, spA= -2} :+ Switch True False False }
+  , MoveDesc "Pay Day" 20 tackle
+      {ty=NOR, pow=40, eff=PayDay}
+  , MoveDesc "Payback" 10 tackle
+      {ty=DAR, pow=50, eff=DoublePwrIfUserAttacked}
+  , MoveDesc "Peck" 35 tackle
+      {ty=FLY, pow=35}
+  , MoveDesc "Perish Song" 5 celebrate
+      {ty=NOR, targ=ALL .|. WIDE, eff=PerishSong}
+  , MoveDesc "Petal Blizzard" 15 tackle
+      {ty=GRA, targ=ADJACENT .|. WIDE, pow=90}
+  , MoveDesc "Petal Dance" 10 tackle
+      {ty=GRA, cat=Special, pow=120, flags=DANCE, eff=Locked}
+  , MoveDesc "Phantom Force" 10 tackle
+      {pow=90, ty=GHO, eff=EInvul Phantom :+ IgnoreProtect False}
+  , MoveDesc "Photon Geyser" 5 tackle
+      {ty=PSY, cat=Special, pow=100, eff=UseHighestOfAttSpA}
+  , MoveDesc "Pika Papow" 20 tackle
+      {ty=ELE, cat=Special, pow=20, acc=0, eff=PikaPapow}
+  , MoveDesc "Pin Missile" 20 tackle
+      {ty=BUG, pow=25, hits=5, acc=95}
+  , MoveDesc "Plasma Fists" 15 tackle
+      {ty=ELE, pow=100, eff=IonDeluge}
+  , MoveDesc "Play Nice" 20 celebrate
+      {ty=NOR, acc=0, targ=ADJACENT, eff=AddBoost False zero {att= -1}}
+  , MoveDesc "Play Rough" 10 tackle
+      {ty=FAI, acc=90, pow=90, eff=10 :% AddBoost False zero {att= -1}}
+  , MoveDesc "Pluck" 20 tackle
+      {ty=FLY, pow=60, eff=EatBerry}
+  , MoveDesc "Poison Fang" 15 tackle
+      {ty=POI, pow=50, eff=50 :% EStatus Toxic}
+  , MoveDesc "Poison Gas" 40 celebrate
+      {ty=POI, targ=ADJACENT, acc=90, eff=EStatus Poison}
+  , MoveDesc "Poison Jab" 20 tackle
+      {ty=POI, pow=80, eff=30 :% EStatus Poison}
+  , MoveDesc "Poison Powder" 35 celebrate
+      {ty=POI, targ=ADJACENT, acc=75, eff=EStatus Poison, flags=POWDER}
+  , MoveDesc "Poison Sting" 35 tackle
+      {ty=POI, pow=15, eff=30 :% EStatus Poison}
+  , MoveDesc "Poison Tail" 25 tackle
+      {ty=POI, pow=50, crit=1, eff=10 :% EStatus Poison}
+  , MoveDesc "Pollen Puff" 15 tackle
+      {ty=BUG, cat=Special, pow=90, eff=PollenPuff}
+  , MoveDesc "Poltergeist" 5 tackle
+      {ty=GHO, pow=110, acc=90, eff=Poltergeist}
+  , MoveDesc "Population Bomb" 10 tackle
+      {ty=NOR, pow=20, acc=90, hits=10} -- TODO: should be 1-10 hits, not 2-10
+  , MoveDesc "Pounce" 20 tackle
+      {ty=BUG, pow=50, eff=AddBoost False zero {spe= -1}}
+  , MoveDesc "Pound" 35 tackle
+      {ty=NOR, pow=40}
+  , MoveDesc "Powder" 35 celebrate
+      {ty=BUG, targ=ALL .|. WIDE, eff=Powder, pri=1}
+  , MoveDesc "Powder Snow" 25 tackle
+      {ty=ICE, cat=Special, pow=40, eff=10 :% EStatus Freeze}
+  , MoveDesc "Power Gem" 20 tackle
+      {ty=ROC, cat=Special, pow=80}
+  , MoveDesc "Power Shift" 10 celebrate
+      {ty=NOR, eff=SwapOffDef}
+  , MoveDesc "Power Split" 10 celebrate
+      {ty=PSY, targ=ADJACENT, eff=AvgAtt}
+  , MoveDesc "Power Swap" 10 celebrate
+      {ty=PSY, targ=ADJACENT, eff=SwpAtt}
+  , MoveDesc "Power Trick" 10 celebrate
+      {ty=PSY, eff=SwapAttDef}
+  , MoveDesc "Power Trip" 10 tackle
+      {ty=DAR, pow=20, eff=AddPwr}
+  , MoveDesc "Power Whip" 10 tackle
+      {ty=GRA, pow=120, acc=85}
+  , MoveDesc "Power-Up Punch" 10 tackle
+      {ty=FIG, pow=40, eff=AddBoost True zero{att=1}}
+  , MoveDesc "Precipice Blades" 10 tackle
+      {ty=GRO, pow=120, acc=85, targ=ADJACENT .|. WIDE}
+  , MoveDesc "Present" 15 tackle
+      {ty=NOR, pow=0, acc=90, eff=Present}
+  , MoveDesc "Prismatic Laser" 10 tackle
+      {ty=PSY, pow=160, eff=Recharge}
+  , MoveDesc "Protect" 10 celebrate
+      {ty=NOR, eff=Protect}
+  , MoveDesc "Psybeam" 20 tackle
+      {ty=PSY, cat=Special, pow=65, eff=10 :% Confuse}
+  , MoveDesc "Psyblade" 15 tackle
+      {ty=PSY, pow=80, eff=PwrInTerrain TPsychic}
+  , MoveDesc "Psych Up" 10 celebrate
+      {ty=PSY, targ=ADJACENT, eff=CopyBoost}
+  , MoveDesc "Psychic" 10 tackle
+      {ty=PSY, cat=Special, pow=90, eff=10 :% AddBoost False zero{spD= -1}}
+  , MoveDesc "Psychic Fangs" 10 tackle
+      {ty=PSY, pow=85, eff=ClearScreen}
+  , MoveDesc "Psychic Terrain" 10 celebrate
+      {ty=PSY, eff=ETerrain TPsychic}
+  , MoveDesc "Psycho Boost" 5 tackle
+      {ty=PSY, cat=Special, pow=140, acc=90, eff=AddBoost True zero {spA= -2}}
+  , MoveDesc "Psycho Cut" 20 tackle
+      {ty=PSY, pow=70, crit=1}
+  , MoveDesc "Psycho Shift" 10 celebrate
+      {ty=PSY, targ=ADJACENT, eff=MoveStatus}
+  , MoveDesc "Psyshield Bash" 10 tackle
+      {ty=PSY, pow=70, acc=90, eff=AddBoost True zero {def=1, spD=1}}
+  , MoveDesc "Psyshock" 10 tackle
+      {ty=PSY, cat=Special, pow=80, eff=UseDef}
+  , MoveDesc "Psystrike" 10 tackle
+      {ty=PSY, cat=Special, pow=100, eff=UseDef}
+  , MoveDesc "Psywave" 15 tackle
+      {ty=PSY, cat=Special, pow=0, eff=Psywave}
+  , MoveDesc "Pulverizing Pancake" 1 tackle
+      {ty=NOR, pow=210, flags=ZMOVE}
+  , MoveDesc "Punishment" 5 tackle
+      {ty=DAR, pow=0, eff=Punishment}
+  , MoveDesc "Purify" 20 celebrate
+      {ty=POI, targ=ADJACENT, eff=Purify}
+  , MoveDesc "Pursuit" 20 tackle
+      {ty=DAR, pow=40, eff=Pursuit}
+  , MoveDesc "Pyro Ball" 5 tackle
+      {ty=FIR, pow=120, acc=90, eff=10 :% EStatus Burn}
 
 
    -- | Switch { user, random, keepBoost :: Bool }
@@ -1463,8 +1629,6 @@ moves =
       {ty=NOR, flags=DANCE, targ=ADJACENT .|. WIDE, eff=Confuse}
   , MoveDesc "Victory Dance" 10 celebrate
       {ty=FIG, flags=DANCE, eff=AddBoost True zero {att=1, def=1}}
-  , MoveDesc "Petal Dance" 10 tackle
-      {ty=GRA, cat=Special, pow=120, flags=DANCE, eff=Locked}
   , MoveDesc "Revelation Dance" 15 tackle
       {ty=NOR, cat=Special, pow=90, flags=DANCE, eff=UserPrimary}
 
@@ -1479,8 +1643,6 @@ moves =
   , MoveDesc "Struggle" 0 tackle
       {pow = 50, eff = Struggle, ty = NON}
 
-  , MoveDesc "Phantom Force" 10 tackle
-      {pow = 90, ty=GHO, eff=EInvul Phantom :+ IgnoreProtect False}
 
   , MoveDesc "Self-Destruct" 5 tackle
       {pow = 200, eff = UserDies, targ=ADJACENT .|. WIDE}
@@ -1488,6 +1650,9 @@ moves =
   , MoveDesc "Tri Attack" 10 tackle
       {ty=NOR, cat=Special, pow=80, eff=20 :% Choose [EStatus Paralysis, EStatus Burn, EStatus Freeze]}
   ]
+
+omniboost =
+  AddBoost True zero {att=1,def=1,spA=1,spD=1,spe=1}
 
 -- Contact moves:
 --
