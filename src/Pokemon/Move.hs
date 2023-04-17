@@ -120,6 +120,7 @@ data Effect
    | AddType TYPE      -- add a third type to the target (forest curse, trick or treat)
    | RemoveType TYPE   -- user loses the given type
    | Camouflage        -- change user's type based on location
+   | CopyType          -- user copies the target's type
 
    | Recharge  -- The move is performed, but the user must skip the next turn
    | Precharge -- The user skips this turn, the move is performed next turn
@@ -319,6 +320,7 @@ data Effect
    | Mist -- User's stat changes cannot be changed "for a period of time"
 
    | PwrInTerrain Terrain -- power increases in the given terrain (misty explosion, psyblade)
+   | DoublePwrInTerrain Terrain
    | IgnoreAbility -- Ignore the targets ability
 
    | RecoverWeather -- Recover an amount of health that varies with weather
@@ -345,6 +347,24 @@ data Effect
    | Punishment -- Power increases when opponent's stats have been raised
    | Purify -- heal target's status condition. If successful, restore users HP
    | Pursuit -- if target switches out, hit with double power
+
+   | Quash
+   | QuickGuard
+
+   | Rage -- raise user's attack when hit (rage)
+   | RageFist -- The more times the user has been hit by attacks, the greater the move's power
+   | RagingBull -- Type depends on the user's form
+   | RagingFury -- User keeps repeating the same move over and over
+   | Recycle -- User's held item is restored
+   | Refresh -- Cures paralysis, poison and burns (not freeze or sleep, toxic?)
+   | SleepFor2Turns -- Sleep for exactly 2 turns, overwriting old status condition (rest)
+   | DoubleDmgIfAllyFaintedLastTurn
+
+   | ReviveAllyToHalfHP
+   | GroundFor1Turn -- remove flying type for 1 turn
+   | Rototiller -- Raise att,spA of grass types
+   | Round -- power "increases" if an ally uses round on the same turn.
+           -- All ally round users attack immediately after the fastest ally
 
    deriving (Show, Eq, Ord)
 
@@ -1606,35 +1626,114 @@ moves =
   , MoveDesc "Pyro Ball" 5 tackle
       {ty=FIR, pow=120, acc=90, eff=10 :% EStatus Burn}
 
+  , MoveDesc "Quash" 15 celebrate
+      {ty=DAR, targ=ADJACENT, eff=Quash}
+  , MoveDesc "Quick Attack" 30 tackle
+      {ty=NOR, pow=40, pri=1}
+  , MoveDesc "Quick Guard" 15 celebrate
+      {ty=FIG, eff=QuickGuard}
+  , MoveDesc "Quiver Dance" 20 celebrate
+      {ty=BUG, flags=DANCE, eff=AddBoost True zero {spe=1, spA=1, spD=1}}
+
+  , MoveDesc "Rage" 20 tackle
+      {ty=NOR, pow=20, eff=Rage}
+  , MoveDesc "Rage Fist" 10 tackle
+      {ty=GHO, pow=50, eff=RageFist}
+  , MoveDesc "Rage Powder" 20 celebrate
+      {ty=BUG, eff=FollowMe, flags=POWDER} -- TODO: Make sure safety-googles ignores this!
+  , MoveDesc "Raging Bull" 10 tackle
+      {ty=NOR, pow=90, eff=IgnoreProtect False :+ RagingBull}
+  , MoveDesc "Raging Fury" 10 tackle
+      {ty=FIR, pow=120, eff=RagingFury}
+  , MoveDesc "Rain Dance" 5 celebrate
+      {ty=WAT, eff=EWeather Rain}
+  , MoveDesc "Rapid Spin" 40 tackle
+      {ty=NOR, pow=50, eff=ClearHazard} -- TODO: Clear the user's hazards
+  , MoveDesc "Razor Leaf" 25 tackle
+      {ty=GRA, pow=55, acc=95, crit=1}
+  , MoveDesc "Razor Shell" 10 tackle
+      {ty=WAT, pow=75, acc=95, eff=50 :% AddBoost False zero{def= -1}}
+  , MoveDesc "Razor Wind" 10 tackle
+      {ty=NOR, cat=Special, pow=80, eff=Precharge, crit=1}
+  , MoveDesc "Recover" 5 celebrate
+      {ty=NOR, eff=Recover 0.5}
+  , MoveDesc "Recycle" 10 celebrate
+      {ty=NOR, eff=Recycle}
+  , MoveDesc "Reflect" 20 celebrate
+      {ty=PSY, eff=EScreen Phy}
+  , MoveDesc "Reflect Type" 15 celebrate
+      {ty=NOR, targ=ADJACENT, eff=CopyType}
+  , MoveDesc "Refresh" 20 celebrate
+      {ty=NOR, eff=Refresh}
+  , MoveDesc "Relic Song" 10 tackle
+      {ty=NOR, cat=Special, pow=75, targ=ADJFOES .|. WIDE, eff=10 :% EStatus Sleep}
+  , MoveDesc "Rest" 5 celebrate
+      {ty=NOR, eff=Recover 1.0 :+ SleepFor2Turns}
+  , MoveDesc "Retaliate" 5 tackle
+      {ty=NOR, pow=70, eff=DoubleDmgIfAllyFaintedLastTurn}
+  , MoveDesc "Return" 20 tackle
+      {ty=NOR, pow=0, eff=PwrHighFriendship}
+  , MoveDesc "Revelation Dance" 15 tackle
+      {ty=NOR, cat=Special, pow=90, flags=DANCE, eff=UserPrimary}
+  , MoveDesc "Revenge" 10 tackle
+      {ty=FIG, pow=60, eff=DoublePwrIfHit} -- TODO: Power "increases" if user was hit first
+  , MoveDesc "Reversal" 15 tackle
+      {ty=FIG, pow=0, eff=RaisePwrUserHP}
+  , MoveDesc "Revival Blessing" 1 celebrate
+      {ty=NOR, eff=ReviveAllyToHalfHP}
+  , MoveDesc "Rising Voltage" 20 tackle
+      {ty=ELE, cat=Special, pow=70, eff=DoublePwrInTerrain TElectric}
+  , MoveDesc "Roar" 20 celebrate
+      {ty=NOR, targ=ADJACENT, eff=Switch False True False}
+  , MoveDesc "Roar of Time" 5 tackle
+      {ty=DRA, cat=Special, pow=150, acc=90, eff=Recharge}
+  , MoveDesc "Rock Blast" 10 tackle
+      {ty=ROC, pow=25, acc=90, hits=5}
+  , MoveDesc "Rock Climb" 20 tackle
+      {ty=NOR, pow=90, acc=85, eff=20 :% Confuse}
+  , MoveDesc "Rock Polish" 20 celebrate
+      {ty=ROC, eff=AddBoost True zero{spe=2}}
+  , MoveDesc "Rock Slide" 10 tackle
+      {ty=ROC, pow=75, acc=90, targ=ADJFOES .|. WIDE, eff=30 :% Flinch}
+  , MoveDesc "Rock Smash" 15 tackle
+      {ty=FIG, pow=40, eff=50 :% AddBoost False zero {def= -1}}
+  , MoveDesc "Rock Throw" 15 tackle
+      {ty=ROC, pow=50, acc=90}
+  , MoveDesc "Rock Tomb" 15 tackle
+      {ty=ROC, pow=60, acc=95, eff=AddBoost False zero {spe= -1}}
+  , MoveDesc "Rock Wrecker" 5 tackle
+      {ty=ROC, pow=150, acc=90, eff=Recharge}
+  , MoveDesc "Role Play" 15 celebrate
+      {ty=NOR, eff=CopyAbility Target2User}
+  , MoveDesc "Rolling Kick" 15 tackle
+      {ty=ROC, pow=60, acc=85, eff=30 :% Flinch}
+  , MoveDesc "Rollout" 20 tackle
+      {ty=ROC, pow=30, acc=90, eff=Scaling5Turns :+ DoubleDmgIfDefenceCurlUsed}
+  , MoveDesc "Roost" 5 celebrate
+      {ty=FLY, eff=GroundFor1Turn :+ Recover 0.5}
+  , MoveDesc "Rototiller" 10 celebrate
+      {ty=GRO, eff=Rototiller, targ=ALL .|. WIDE}
+  , MoveDesc "Round" 15 tackle
+      {ty=NOR, cat=Special, pow=60, eff=Round}
+  , MoveDesc "Ruination" 10 tackle
+      {ty=DAR, cat=Special, pow=1, acc=90, eff=HalfHP}
 
    -- | Switch { user, random, keepBoost :: Bool }
 
-  , MoveDesc "Rollout" 20 tackle
-      {ty=ROC, pow=30, acc=90, eff=Scaling5Turns :+ DoubleDmgIfDefenceCurlUsed}
-  , MoveDesc "Return" 20 tackle
-      {ty=NOR, pow=0, eff=PwrHighFriendship}
-  , MoveDesc "Rage Powder" 20 celebrate
-      {ty=GRA, eff=FollowMe, flags=POWDER}
   , MoveDesc "Trick or Treat" 20 celebrate
       {ty=GHO, targ=ADJACENT, eff=AddType GHO}
 
   , MoveDesc "Water Pledge" 10 tackle
       {ty=WAT, pow=80, cat=Special, eff=WaterPledge}
 
-  , MoveDesc "Quiver Dance" 20 celebrate
-      {ty=BUG, flags=DANCE, eff=AddBoost True zero {spe=1, spA=1, spD=1}}
   , MoveDesc "Swords Dance" 20 celebrate
       {ty=NOR, flags=DANCE, eff=AddBoost True zero {att=2}}
   , MoveDesc "Teeter Dance" 20 celebrate
       {ty=NOR, flags=DANCE, targ=ADJACENT .|. WIDE, eff=Confuse}
   , MoveDesc "Victory Dance" 10 celebrate
       {ty=FIG, flags=DANCE, eff=AddBoost True zero {att=1, def=1}}
-  , MoveDesc "Revelation Dance" 15 tackle
-      {ty=NOR, cat=Special, pow=90, flags=DANCE, eff=UserPrimary}
 
 
-  , MoveDesc "Role Play" 15 celebrate
-      {ty=NOR, eff=CopyAbility Target2User}
   , MoveDesc "Skill Swap" 15 celebrate
       {ty=NOR, eff=SwapAbility}
 
