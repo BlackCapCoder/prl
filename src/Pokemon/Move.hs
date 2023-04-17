@@ -11,6 +11,9 @@ import Prelude   hiding (Category)
 
 type Ability = Int
 
+simpleID = -1
+
+
 data Category
    = Physical
    | Special
@@ -43,6 +46,7 @@ pattern SELF     = 0b0001000 :: Target
 pattern ADJACENT = 0b1100100 :: Target
 pattern ALL      = 0b1111110 :: Target
 pattern ADJFOES  = 0b1100000 :: Target
+pattern FOES     = 0b1110000 :: Target
 pattern ALLIES   = 0b0000110 :: Target
 pattern WIDE     = 0b0000001 :: Target -- hit all targets if set, otherwise choose one
 
@@ -131,6 +135,7 @@ data Effect
    | SwpAtt     -- swap att and spA with targer (power swap)
    | AvgDef     -- average def and spD with target
    | SwpDef     -- swap def and spD with targer
+   | SwpSpe     -- swap spe with targer
 
    -- target must switch with an ally at the end of the move.
    -- if 'user', the user of the move switches, regardless of target
@@ -180,12 +185,15 @@ data Effect
    | RecoilMax Float -- user is damaged by a fraction of it's own max HP
 
    | Protect       -- protect, detect
-   | KingShield    -- like protect, but contact moves receive a negative attack boost
-   | BanefulBunker -- like protect, but contact moves receive poison status
    | WideGuard     -- like protect, but only for moves that hit multiple pokemon
    | Substitute
    | IgnoreProtect Bool -- the move can hit through protect (phantom force, horn drill, ..)
                         -- if True, the move fails if the target does not protect (feint)
+
+   -- Any foe that hits the user with a contact move, even if the user is protected,
+   -- will recieve the following effect. The target of the effect is the foe
+   --
+   | IfUserHitByContactMove Effect
 
    | Endure      -- user survive at at-least 1 HP, may fail if used in succession
    | Don'tKill   -- Target survives at at-least 1 HP
@@ -366,6 +374,34 @@ data Effect
    | Round -- power "increases" if an ally uses round on the same turn.
            -- All ally round users attack immediately after the fastest ally
 
+   | SaltCure -- Deals damage each turn; steel and water types are more affected
+   | SecretPower -- Effects of the attack vary with location
+   | ShedTail -- Create a substitute, then switch to a teammate.
+              -- Check if this works like baton pass
+
+   | ShellSideArm -- "May" poison. Inflict either Special/Physical damage, whichever is better
+   | ShellTrap -- Deal "more" damage if hit by a Physical move
+   | ShoreUp -- Recover, but heal more in a sandstorm
+   | Sketch -- Permanently replace the user's move with the target's last used move
+   | SkyDrop -- Both user and target gets Flying semiInvul.
+             -- If target is slower than the user, it skips its attack.
+             -- Next turn, the user attacks the target
+
+   | HitInvul Invulnerable -- Attack can hit target in the given invul state,
+                           -- but there are no additional effects
+
+   | SleepTalk -- use a random known move, excluding sleep talk
+   | GroundFlying -- target (flying-types) become vulnerable to ground-type moves
+                  -- TODO: Does this apply to levitate too?
+
+   | SmellingSalts -- double power if target is paralysed. Cure the paralysis
+   | IgnoreFollowMe
+   | FailIfNotAsleep
+   | Snowscape -- raises defence of ice-types for 5 turns
+   | ChargeIfNotSun
+   | HealBurn
+   | StealStatBoosts -- removes the targets possitive boosts and adds them onto the user
+
    deriving (Show, Eq, Ord)
 
 pattern OHKO   = FractionalDamage 1.0
@@ -429,6 +465,8 @@ data LockingMove
    | Clamp
    | Infestation
    | MagmaStorm
+   | SandTomb
+   | SnapTrap
    deriving (Show, Eq, Ord, Enum, Bounded)
 
 ----
@@ -571,7 +609,7 @@ moves =
   , MoveDesc "Baddy Bad" 15 tackle
       {ty=DAR, cat=Special, pow=90, eff=BaddyBad}
   , MoveDesc "Baneful Bunker" 10 celebrate
-      {ty=POI, eff=BanefulBunker}
+      {ty=POI, eff=Protect :+ IfUserHitByContactMove do EStatus Poison}
   , MoveDesc "Barb Barrage" 10 tackle
       {ty=POI, pow=60, eff=DoubleDmgIfTargetStatus}
   , MoveDesc "Barrage" 20 tackle
@@ -1269,7 +1307,8 @@ moves =
   , MoveDesc "Kinesis" 15 celebrate
       {ty=PSY, acc=80, targ=ADJACENT, eff=AddBoost False zero {acc= -1}}
   , MoveDesc "King's Shield" 10 celebrate
-      {ty=PSY, eff=KingShield}
+      {ty=PSY, eff=Protect :+ IfUserHitByContactMove do AddBoost True zero {att= -1}}
+
   , MoveDesc "Knock Off" 20 tackle
       {ty=DAR, pow=65, eff=RemoveItem}
   , MoveDesc "Kowtow Cleave" 10 tackle
@@ -1718,6 +1757,191 @@ moves =
   , MoveDesc "Ruination" 10 tackle
       {ty=DAR, cat=Special, pow=1, acc=90, eff=HalfHP}
 
+  , MoveDesc "Sacred Fire" 5 tackle
+      {ty=FIR, pow=100, acc=95, eff=50 :% EStatus Burn}
+  , MoveDesc "Sacred Sword" 15 tackle
+      {ty=FIG, pow=90, eff=IgnoreBoosts}
+  , MoveDesc "Safeguard" 25 celebrate
+      {ty=NOR, eff=Safeguard}
+  , MoveDesc "Salt Cure" 15 tackle
+      {ty=ROC, pow=40, eff=SaltCure}
+  , MoveDesc "Sand Attack" 15 celebrate
+      {ty=GRO, targ=ADJACENT, eff=AddBoost False zero {acc= -1}}
+  , MoveDesc "Sand Tomb" 15 tackle
+      {ty=GRO, pow=35, acc=85, eff=ELocking SandTomb}
+  , MoveDesc "Sandsear Storm" 10 tackle
+      {ty=GRO, cat=Special, pow=100, acc=80, eff=EStatus Burn}
+  , MoveDesc "Sandstorm" 10 celebrate
+      {ty=ROC, eff=EWeather Sandstorm}
+  , MoveDesc "Sappy Seed" 15 tackle
+      {ty=GRA, pow=90, eff=LeechSeed} -- TODO: Verify that this does not stack with leech seed
+  -- savage spin-out
+  , MoveDesc "Scald" 15 tackle
+      {ty=WAT, cat=Special, pow=80, eff=30 :% EStatus Burn}
+  , MoveDesc "Scale Shot" 20 tackle
+      {ty=DRA, pow=25, acc=90, hits=5, eff=AddBoost True zero{spe=1, def= -1}}
+  , MoveDesc "Scary Face" 10 celebrate
+      {ty=NOR, targ=ADJACENT, eff=AddBoost False zero{spe= -2}}
+  , MoveDesc "Scorching Sands" 10 tackle
+      {ty=GRO, cat=Special, pow=70, eff=EStatus Burn} -- TODO: "May" burn target (but 100%)
+  , MoveDesc "Scratch" 35 tackle
+      {ty=NOR, pow=40}
+  , MoveDesc "Screech" 40 celebrate
+      {ty=NOR, acc=85, targ=ADJACENT, eff=AddBoost False zero{def= -2}}
+  , MoveDesc "Searing shot" 5 tackle
+      {ty=FIR, cat=Special, pow=100, eff=30 :% EStatus Burn}
+  , MoveDesc "Searing Sunraze Smash" 1 tackle
+      {ty=STE, pow=200, flags=ZMOVE}
+  , MoveDesc "Secret Power" 20 tackle
+      {ty=NOR, pow=70, eff=SecretPower}
+  , MoveDesc "Secret Sword" 10 tackle
+      {ty=FIG, cat=Special, pow=85, eff=UseDef}
+  , MoveDesc "Seed Bomb" 15 tackle
+      {ty=GRA, pow=80}
+  , MoveDesc "Seed Flare" 5 tackle
+      {ty=GRA, cat=Special, pow=120, acc=85, eff=40 :% AddBoost False zero{spD= -1}}
+  , MoveDesc "Seismic Toss" 20 tackle
+      {ty=FIG, pow=0, eff=LevelDamage}
+  , MoveDesc "Self-Destruct" 5 tackle
+      {ty=NOR, pow=200, eff=UserDies, targ=ADJACENT .|. WIDE}
+  , MoveDesc "Shadow Ball" 15 tackle
+      {ty=GHO, cat=Special, pow=80, eff=20 :% AddBoost False zero{spD= -1}}
+  , MoveDesc "Shadow Bone" 10 tackle
+      {ty=GHO, pow=85, eff=20 :% AddBoost False zero{def= -1}}
+  , MoveDesc "Shadow Claw" 10 tackle
+      {ty=GHO, pow=70, crit=1}
+  , MoveDesc "Shadow Force" 5 tackle
+      {ty=GHO, pow=120, eff=EInvul Phantom :+ IgnoreProtect False}
+  , MoveDesc "Shadow Punch" 20 tackle
+      {ty=GHO, pow=60, acc=0}
+  , MoveDesc "Shadow Sneak" 30 tackle
+      {ty=GHO, pow=40, pri=1}
+  , MoveDesc "Sharpen" 30 celebrate
+      {ty=NOR, eff=AddBoost True zero {att=1}}
+  -- Shattered Psyche
+  , MoveDesc "Shed Tail" 10 celebrate
+      {ty=NOR, eff=ShedTail}
+  , MoveDesc "Sheer Cold" 5 tackle
+      {ty=ICE, cat=Special, pow=0, acc=30, eff=OHKO}
+  , MoveDesc "Shell Side Arm" 10 tackle
+      {ty=POI, cat=Special, eff=ShellSideArm}
+  , MoveDesc "Shell Smash" 15 celebrate
+      {ty=NOR, eff=AddBoost True zero {att=2,spA=2,spe=2,def= -1,spD= -1}}
+  , MoveDesc "Shell Trap" 5 tackle
+      {ty=FIR, cat=Special, pow=150, eff=ShellTrap}
+  , MoveDesc "Shelter" 10 celebrate
+      {ty=STE, eff=AddBoost True zero {def=1, eva=1}}
+  , MoveDesc "Shift Gear" 10 celebrate
+      {ty=STE, eff=AddBoost True zero {att=1, spe=2}}
+  , MoveDesc "Shock Wave" 20 tackle
+      {ty=ELE, cat=Special, pow=60, acc=0}
+  , MoveDesc "Shore Up" 10 celebrate
+      {ty=GRO, eff=ShoreUp}
+  , MoveDesc "Signal Beam" 15 tackle
+      {ty=BUG, cat=Special, pow=75, eff=10 :% Confuse}
+  , MoveDesc "Silk Trap" 10 celebrate
+      {ty=BUG, eff=Protect :+ IfUserHitByContactMove do AddBoost True zero {spe=1}}
+  , MoveDesc "Silver Wind" 5 tackle
+      {ty=BUG, cat=Special, pow=60, eff=10 :% omniboost}
+  , MoveDesc "Simple Beam" 15 celebrate
+      {ty=NOR, targ=ADJACENT, eff=SetAbility simpleID}
+  , MoveDesc "Sing" 15 celebrate
+      {ty=NOR, targ=ADJACENT, acc=55, eff=EStatus Sleep}
+  , MoveDesc "Sinister Arrow Raid" 1 tackle
+      {ty=GHO, pow=180, flags=ZMOVE}
+  , MoveDesc "Sizzly Slide" 15 tackle
+      {ty=FIR, pow=90, eff=EStatus Burn}
+  , MoveDesc "Sketch" 1 celebrate
+      {ty=NOR, targ=ADJACENT, eff=Sketch}
+  , MoveDesc "Skill Swap" 10 celebrate
+      {ty=PSY, targ=ADJACENT, eff=SwapAbility}
+  , MoveDesc "Skitter Smack" 10 tackle
+      {ty=BUG, pow=70, acc=90, eff=AddBoost False zero {spA= -1}}
+  , MoveDesc "Skull Bash" 10 tackle -- TODO: boost on first turn, attack on second
+      {ty=NOR, pow=130, eff=AddBoost True zero{def=1} :+ Precharge}
+  , MoveDesc "Sky Attack" 5 tackle -- TODO: Flinch on second turn if it hits
+      {ty=FLY, pow=140, acc=90, crit=1, eff=Precharge :+ 30 :% Flinch}
+  , MoveDesc "Sky Drop" 10 tackle
+      {ty=FLY, pow=60, eff=SkyDrop}
+  , MoveDesc "Sky Uppercut" 15 tackle
+      {ty=FIG, pow=85, acc=90, eff=HitInvul Flying}
+  , MoveDesc "Slack Off" 5 celebrate
+      {ty=NOR, eff=Recover 0.5}
+  , MoveDesc "Slam" 20 tackle
+      {ty=NOR, pow=80, acc=75}
+  , MoveDesc "Slash" 20 tackle
+      {ty=NOR, pow=70, crit=1}
+  , MoveDesc "Sleep Powder" 15 celebrate
+      {ty=GRA, acc=75, targ=ADJACENT, flags=POWDER, eff=EStatus Sleep}
+  , MoveDesc "Sleep Talk" 10 celebrate
+      {ty=NOR, eff=FailIfNotAsleep :+ SleepTalk}
+  , MoveDesc "Sludge" 20 tackle
+      {ty=POI, cat=Special, pow=65, eff=30 :% EStatus Poison}
+  , MoveDesc "Sludge Bomb" 10 tackle
+      {ty=POI, cat=Special, pow=90, eff=30 :% EStatus Poison}
+  , MoveDesc "Sludge Wave" 10 tackle
+      {ty=POI, cat=Special, pow=95, eff=10 :% EStatus Poison, targ=ADJACENT .|. WIDE}
+  , MoveDesc "Smack Down" 15 tackle
+      {ty=ROC, pow=50, eff=GroundFlying}
+  , MoveDesc "Smart Strike" 10 tackle
+      {ty=STE, pow=70, acc=0}
+  , MoveDesc "Smelling Salts" 10 tackle
+      {ty=NOR, pow=70, eff=SmellingSalts}
+  , MoveDesc "Smog" 20 tackle
+      {ty=POI, cat=Special, pow=30, acc=70, eff=40 :% EStatus Poison}
+  , MoveDesc "Smokescreen" 20 celebrate
+      {ty=NOR, targ=ADJACENT, eff=AddBoost False zero {acc= -1}}
+  , MoveDesc "Snap Trap" 15 tackle
+      {ty=GRA, pow=35, eff=ELocking SnapTrap}
+  , MoveDesc "Snarl" 15 tackle
+      {ty=DAR, cat=Special, pow=55, acc=95, targ=ADJFOES .|. WIDE, eff=AddBoost False zero{spA= -1}}
+  , MoveDesc "Snatch" 10 celebrate
+      {ty=DAR, eff=Snatch}
+  , MoveDesc "Snap Trap" 15 tackle
+      {ty=WAT, cat=Special, pow=80, crit=1, eff=IgnoreFollowMe}
+  , MoveDesc "Snore" 15 tackle
+      {ty=NOR, cat=Special, pow=50, eff=FailIfNotAsleep :+ 30 :% Flinch}
+  , MoveDesc "Snowscape" 10 celebrate
+      {ty=ICE, eff=Snowscape}
+  , MoveDesc "Soak" 20 celebrate
+      {ty=WAT, targ=ADJACENT, eff=SetType WAT False}
+  , MoveDesc "Soft-Boiled" 5 celebrate
+      {ty=NOR, eff=Recover 0.5}
+  , MoveDesc "Solar Beam" 10 tackle
+      {ty=GRA, cat=Special, pow=120, eff=ChargeIfNotSun}
+  , MoveDesc "Solar Blade" 10 tackle
+      {ty=GRA, pow=125, eff=ChargeIfNotSun}
+  , MoveDesc "Sonic Boom" 20 tackle
+      {ty=NOR, pow=0, acc=90, eff=ConstantDamage 20}
+  , MoveDesc "Soul-Stealing 7-Star Strike" 1 tackle
+      {ty=GHO, pow=195, flags=ZMOVE}
+  , MoveDesc "Spacial Rend" 5 tackle
+      {ty=DRA, cat=Special, pow=100, acc=95, crit=1}
+  , MoveDesc "Spark" 20 tackle
+      {ty=ELE, pow=65, eff=20 :% EStatus Paralysis}
+  , MoveDesc "Sparkling Aria" 10 tackle
+      {ty=WAT, cat=Special, pow=90, eff=HealBurn}
+  , MoveDesc "Sparkly Swirl" 15 tackle
+      {ty=FAI, cat=Special, pow=90, eff=ClearStatusParty}
+  , MoveDesc "Spectral Thief" 10 tackle
+      {ty=GHO, pow=90, eff=StealStatBoosts}
+  , MoveDesc "Speed Swap" 10 celebrate
+      {ty=PSY, targ=ADJACENT, eff=SwpSpe}
+  , MoveDesc "Spicy Extract" 15 celebrate
+      {ty=GRA, targ=ADJACENT, eff=AddBoost False zero{def= -3, att=2}}
+  , MoveDesc "Spider Web" 10 celebrate
+      {ty=BUG, targ=ADJACENT, eff=NoSwitch}
+  , MoveDesc "Spike Cannon" 15 tackle
+      {ty=NOR, pow=20, hits=5}
+  , MoveDesc "Spikes" 20 celebrate
+      {ty=GRO, targ=FOES .|. WIDE, eff=EHazard Spikes}
+
+
+  , MoveDesc "Struggle" 0 tackle
+      {ty=NON, pow=50, eff=Struggle}
+  , MoveDesc "Swords Dance" 20 celebrate
+      {ty=NOR, flags=DANCE, eff=AddBoost True zero {att=2}}
+
    -- | Switch { user, random, keepBoost :: Bool }
 
   , MoveDesc "Trick or Treat" 20 celebrate
@@ -1726,25 +1950,14 @@ moves =
   , MoveDesc "Water Pledge" 10 tackle
       {ty=WAT, pow=80, cat=Special, eff=WaterPledge}
 
-  , MoveDesc "Swords Dance" 20 celebrate
-      {ty=NOR, flags=DANCE, eff=AddBoost True zero {att=2}}
   , MoveDesc "Teeter Dance" 20 celebrate
       {ty=NOR, flags=DANCE, targ=ADJACENT .|. WIDE, eff=Confuse}
   , MoveDesc "Victory Dance" 10 celebrate
       {ty=FIG, flags=DANCE, eff=AddBoost True zero {att=1, def=1}}
 
-
-  , MoveDesc "Skill Swap" 15 celebrate
-      {ty=NOR, eff=SwapAbility}
-
   , MoveDesc "Tackle"  35 tackle
       { flags=CONTACT }
-  , MoveDesc "Struggle" 0 tackle
-      {pow = 50, eff = Struggle, ty = NON}
 
-
-  , MoveDesc "Self-Destruct" 5 tackle
-      {pow = 200, eff = UserDies, targ=ADJACENT .|. WIDE}
 
   , MoveDesc "Tri Attack" 10 tackle
       {ty=NOR, cat=Special, pow=80, eff=20 :% Choose [EStatus Paralysis, EStatus Burn, EStatus Freeze]}

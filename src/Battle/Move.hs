@@ -382,14 +382,6 @@ runEffect env@MoveEnv {..} eff = do
     Protect ->
       protectTarget env
 
-    -- TODO: Attack drop
-    KingShield ->
-      protectTarget env
-
-    -- TODO: Poison
-    BanefulBunker ->
-      protectTarget env
-
     WideGuard ->
       putTarget targ { wideGuard = True }
 
