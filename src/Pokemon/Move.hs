@@ -35,7 +35,7 @@ data Move = Move
    deriving (Show, Eq, Ord)
 
 neverMiss  = 0 -- acc
-alwaysCrit = 6 -- crit
+alwaysCrit = 4 -- crit
 
 -- Foe  Foe  Foe
 -- Self Ally Ally
@@ -241,6 +241,7 @@ data Effect
    | CoreEnforcer -- suppress targets ability if it has already moved
    | RemoveItem
    | StealItem
+   | SwapItem
    | Safeguard
    | CraftyShield
    | Defog
@@ -401,6 +402,16 @@ data Effect
    | ChargeIfNotSun
    | HealBurn
    | StealStatBoosts -- removes the targets possitive boosts and adds them onto the user
+
+   | SpitUp
+   | Swallow
+   | Stockpile
+   | Spite
+   | SpringtideStorm
+   | DoublePwrIfLastMoveFailed
+   | StrengthSap -- heal user by the same amount as the target's attack stat
+   | SuckerPunch
+   | Synchronoise -- hits all adjacent pokemon that share a type with the user
 
    deriving (Show, Eq, Ord)
 
@@ -1935,32 +1946,139 @@ moves =
       {ty=NOR, pow=20, hits=5}
   , MoveDesc "Spikes" 20 celebrate
       {ty=GRO, targ=FOES .|. WIDE, eff=EHazard Spikes}
-
-
+  , MoveDesc "Spiky Shield" 10 celebrate
+      {ty=GRA, pri=4, eff=Protect :+ IfUserHitByContactMove do
+        FractionalDamageMax (1/8) }
+  , MoveDesc "Spin Out" 5 tackle
+      {ty=STE, pow=100, eff=AddBoost True zero {spe= -2}}
+  , MoveDesc "Spirit Break" 15 tackle
+      {ty=FAI, pow=75, eff=AddBoost False zero {spA= -1}}
+  , MoveDesc "Spirit Shackle" 10 tackle
+      {ty=GHO, pow=80, eff=NoSwitch}
+  , MoveDesc "Spit Up" 10 tackle
+      {ty=NOR, cat=Special, pow=0, eff=SpitUp}
+  , MoveDesc "Spit Up" 10 tackle
+      {ty=NOR, cat=Special, pow=0, eff=SpitUp}
+  , MoveDesc "Spite" 10 celebrate
+      {ty=GHO, targ=ADJACENT, eff=Spite}
+  , MoveDesc "Splash" 40 celebrate
+      {ty=NOR}
+  , MoveDesc "Splintered Stormshards" 1 tackle
+      {ty=ROC, pow=190, flags=ZMOVE}
+  , MoveDesc "Splishy Splash" 15 tackle
+      {ty=WAT, cat=Special, eff=30 :% EStatus Paralysis}
+  , MoveDesc "Spore" 15 celebrate
+      {ty=GRA, targ=ADJACENT, eff=EStatus Sleep}
+  , MoveDesc "Spotlight" 15 celebrate
+      {ty=NOR, targ=ADJACENT, eff=FollowMe, pri=3}
+  , MoveDesc "Springtide Storm" 5 tackle
+      {ty=FAI, cat=Special, pow=100, acc=80, eff=SpringtideStorm}
+  , MoveDesc "Stealth Rocks" 20 celebrate
+      {ty=ROC, targ=FOES .|. WIDE, eff=EHazard Rocks}
+  , MoveDesc "Steam Erruption" 5 tackle
+      {ty=WAT, cat=Special, pow=110, acc=95, eff=30 :% EStatus Burn}
+  , MoveDesc "Steamroller" 20 tackle
+      {ty=BUG, pow=65, eff=30 :% Flinch}
+  , MoveDesc "Steel Beam" 5 tackle
+      {ty=STE, cat=Special, pow=140, acc=95} -- TODO: User loses 50% of its HP
+  , MoveDesc "Steel Roller" 5 tackle
+      {ty=STE, pow=130} -- TODO: Fail if no terrain
+  , MoveDesc "Steel Wing" 25 tackle
+      {ty=STE, pow=70, acc=90, eff=10 :% AddBoost True zero {def=1}}
+  , MoveDesc "Sticky Web" 20 celebrate
+      {ty=BUG, targ=FOES .|. WIDE, eff=EHazard Web}
+  , MoveDesc "Stockpile" 20 celebrate
+      {ty=NOR, eff=Stockpile}
+  , MoveDesc "Stoked Sparksurfer" 1 tackle
+      {ty=ELE, cat=Special, pow=175, flags=ZMOVE}
+  , MoveDesc "Stomp" 20 tackle
+      {ty=NOR, pow=65, eff=30 :% Flinch}
+  , MoveDesc "Stomping Tantrum" 10 tackle
+      {ty=GRO, pow=75, eff=DoublePwrIfLastMoveFailed}
+  , MoveDesc "Stone Axe" 15 tackle
+      {ty=ROC, pow=65, acc=90, crit=1, eff=DamageWithSplinters}
+  , MoveDesc "Stone Edge" 5 tackle
+      {ty=ROC, pow=100, acc=80, crit=1}
+  , MoveDesc "Stored Power" 10 tackle
+      {ty=PSY, cat=Special, pow=20, eff=AddPwr}
+  , MoveDesc "Storm Throw" 10 tackle
+      {ty=FIG, pow=60, crit=alwaysCrit}
+  , MoveDesc "Strange Steam" 10 tackle
+      {ty=FAI, cat=Special, pow=90, acc=95, eff=20 :% Confuse}
+  , MoveDesc "Strength" 15 tackle
+      {ty=NOR, pow=80}
+  , MoveDesc "Strength Sap" 10 celebrate
+      {ty=GRA, targ=ADJACENT, eff=StrengthSap :+ AddBoost False zero {att= -1}}
+  , MoveDesc "String Shot" 40 celebrate
+      {ty=BUG, targ=ADJACENT, acc=95, eff=AddBoost False zero {spe= -2}}
   , MoveDesc "Struggle" 0 tackle
       {ty=NON, pow=50, eff=Struggle}
+  , MoveDesc "Struggle Bug" 20 tackle
+      {ty=BUG, cat=Special, pow=50, eff=AddBoost False zero {spA= -1}}
+  , MoveDesc "Stuff Cheeks" 10 celebrate
+      {ty=NOR, eff=EatBerry :+ AddBoost True zero {def=2}}
+  , MoveDesc "Stun Spore" 30 celebrate
+      {ty=GRA, targ=ADJACENT, acc=75, eff=EStatus Paralysis}
+  , MoveDesc "Submission" 20 tackle
+      {ty=FIG, pow=80, acc=80, eff=Recoil 0.25}
+  , MoveDesc "Substitute" 10 celebrate
+      {ty=NOR, eff=Substitute}
+  -- subzero slammer
+  , MoveDesc "Sucker Punch" 5 tackle
+      {ty=DAR, pow=70, pri=1, eff=SuckerPunch}
+  , MoveDesc "Sunny Day" 5 celebrate
+      {ty=FIR, eff=EWeather Sun}
+  , MoveDesc "Sunsteel Strike" 5 tackle
+      {ty=STE, pow=100, eff=IgnoreAbility}
+  , MoveDesc "Super Fang" 10 tackle
+      {ty=NOR, pow=0, acc=90, eff=HalfHP}
+  , MoveDesc "Superpower" 5 tackle
+      {ty=FIG, pow=120, eff=AddBoost False zero {att= -1, def= -1}}
+  , MoveDesc "Supersonic" 20 celebrate
+      {ty=NOR, targ=ADJACENT, acc=55, eff=Confuse}
+  -- supersonic skystrike
+  , MoveDesc "Surf" 15 tackle
+      {ty=WAT, cat=Special, pow=90, targ=ADJACENT .|. WIDE}
+  , MoveDesc "Surging Strikes" 5 tackle
+      {ty=WAT, pow=25, crit=alwaysCrit, eff=IgnoreBoosts}
+  , MoveDesc "Swagger" 15 celebrate
+      {ty=NOR, targ=ADJACENT, acc=85, eff=Confuse :+ AddBoost False zero {att=2}}
+  , MoveDesc "Swallow" 10 celebrate
+      {ty=NOR, eff=Swallow}
+  , MoveDesc "Sweet Kiss" 10 celebrate
+      {ty=FAI, acc=75, eff=Confuse, targ=ADJACENT}
+  , MoveDesc "Sweet Scent" 10 celebrate
+      {ty=NOR, targ=ADJACENT, eff=AddBoost False zero {eva= -1}}
+  , MoveDesc "Swift" 20 tackle
+      {ty=NOR, cat=Special, pow=60, acc=0, targ=ADJFOES .|. WIDE}
+  , MoveDesc "Switcheroo" 10 celebrate
+      {ty=DAR, targ=ADJACENT, eff=SwapItem}
   , MoveDesc "Swords Dance" 20 celebrate
       {ty=NOR, flags=DANCE, eff=AddBoost True zero {att=2}}
+  , MoveDesc "Synchronoise" 10 tackle
+      {ty=PSY, cat=Special, pow=120, eff=Synchronoise, targ=ADJACENT .|. WIDE}
+  , MoveDesc "Synthesis" 5 celebrate
+      {ty=GRA, eff=RecoverWeather}
+
+  , MoveDesc "Tackle"  35 tackle
+      { flags=CONTACT }
+  , MoveDesc "Teeter Dance" 20 celebrate
+      {ty=NOR, flags=DANCE, targ=ADJACENT .|. WIDE, eff=Confuse}
+  , MoveDesc "Tri Attack" 10 tackle
+      {ty=NOR, cat=Special, pow=80, eff=20 :% Choose [EStatus Paralysis, EStatus Burn, EStatus Freeze]}
+  , MoveDesc "Trick or Treat" 20 celebrate
+      {ty=GHO, targ=ADJACENT, eff=AddType GHO}
 
    -- | Switch { user, random, keepBoost :: Bool }
 
-  , MoveDesc "Trick or Treat" 20 celebrate
-      {ty=GHO, targ=ADJACENT, eff=AddType GHO}
 
   , MoveDesc "Water Pledge" 10 tackle
       {ty=WAT, pow=80, cat=Special, eff=WaterPledge}
 
-  , MoveDesc "Teeter Dance" 20 celebrate
-      {ty=NOR, flags=DANCE, targ=ADJACENT .|. WIDE, eff=Confuse}
   , MoveDesc "Victory Dance" 10 celebrate
       {ty=FIG, flags=DANCE, eff=AddBoost True zero {att=1, def=1}}
 
-  , MoveDesc "Tackle"  35 tackle
-      { flags=CONTACT }
 
-
-  , MoveDesc "Tri Attack" 10 tackle
-      {ty=NOR, cat=Special, pow=80, eff=20 :% Choose [EStatus Paralysis, EStatus Burn, EStatus Freeze]}
   ]
 
 omniboost =
