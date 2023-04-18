@@ -437,7 +437,7 @@ runEffect env@MoveEnv {..} eff = do
     Belch      -> error "Belch"
     Bestow     -> error "Bestow"
     BodyPress  -> error "BodyPress"
-    EatBerry   -> error "EatBerry"
+    EatBerry _ -> error "EatBerry"
 
     BurnIfBoosted -> do
       when (isNothing targ.pokemon.status && any (>0) targ.boosts) do

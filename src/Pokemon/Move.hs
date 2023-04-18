@@ -26,7 +26,7 @@ data Move = Move
    , pow     :: Word8  -- The base power (BP) of a move
    , acc     :: Word8  -- probability of the move hitting the target (0=Always /= 100 due to evasion)
    , crit    :: Word8  -- 1="high crit chance", alwaysCrit="always crits"
-   , hits    :: Word8  -- Number of times to perform the move, between 2 and N (N if N<2)
+   , hits    :: (Word8,Word8)  -- Number of times to perform the move, between 2 and N (N if N<2)
    , pri     :: Int8   -- Priority bracket. In each bracket, faster pokemon attack first (unless trick room)
    , flags   :: Word8
    , targ    :: Target -- The target(s) of the move
@@ -228,7 +228,7 @@ data Effect
    | Belch -- User must have consumed a berry
    | Bestow -- User gives held item to target
    | BodyPress -- The higher the user's defence, the stronger the attack
-   | EatBerry -- user eats the targets berry
+   | EatBerry Bool -- if true, user eats the targets berry, if false, target eat its own berry
    | BurnIfBoosted
    | Captivate -- sharpely lower spA if opposite gender
    | Charge -- raises spD and next elec move deals more damage
@@ -413,6 +413,20 @@ data Effect
    | SuckerPunch
    | Synchronoise -- hits all adjacent pokemon that share a type with the user
 
+   | TarShot -- makes the farget weaker to fire-type moves
+   | TechnoBlast -- type depends on held drive
+   | Telekinesis -- ignore targets eva for 3 truns, add Ground immunity
+   | TeraBlast -- change type when user has terastallized
+   | TerrainPulse -- type and power changes depending on current terrain
+   | TroatChop -- prevent use of sound moves for 2 turns
+   | PerfectAccuracyInWeather Weather
+   | RemoveSubstitute
+   | TripleAxel -- A consecutive three-kick attack that becomes more powerful with each successful hit
+   | TripleKick -- Hits 3 times, with each kick's BP increasing by 10.
+                -- Each hit has its own acc check, if one misses the move ends
+
+   | TrumpCard -- Lower the PP, the higher the power
+
    deriving (Show, Eq, Ord)
 
 pattern OHKO   = FractionalDamage 1.0
@@ -478,6 +492,7 @@ data LockingMove
    | MagmaStorm
    | SandTomb
    | SnapTrap
+   | ThunderCage
    deriving (Show, Eq, Ord, Enum, Bounded)
 
 ----
@@ -510,7 +525,7 @@ celebrate = Move
   , crit    = 0
   , pri     = 0
   , targ    = SELF
-  , hits    = 1
+  , hits    = (1, 1)
   , eff     = None
   , flags  = 0
   }
@@ -523,7 +538,7 @@ tackle = Move
   , crit    = 0
   , pri     = 0
   , targ    = ADJACENT
-  , hits    = 1
+  , hits    = (1, 1)
   , eff     = None
   , flags  = 0
   }
@@ -581,7 +596,7 @@ moves =
   , MoveDesc "Aqua Tail" 10 tackle
       {ty=WAT, pow=90, flags=CONTACT}
   , MoveDesc "Arm Thrust" 20 tackle
-      {ty=FIG, pow=15, hits=5, flags=CONTACT}
+      {ty=FIG, pow=15, hits=(2,5), flags=CONTACT}
   , MoveDesc "Armor Cannon" 5 tackle
       {ty=FIR, pow=120, cat=Special, eff=AddBoost True zero {def= -1, spD= -1}}
   , MoveDesc "Aromatherapy" 5 celebrate
@@ -624,7 +639,7 @@ moves =
   , MoveDesc "Barb Barrage" 10 tackle
       {ty=POI, pow=60, eff=DoubleDmgIfTargetStatus}
   , MoveDesc "Barrage" 20 tackle
-      {ty=NOR, pow=15, acc=85, hits=5}
+      {ty=NOR, pow=15, acc=85, hits=(2,5)}
   , MoveDesc "Barrier" 20 celebrate
       {ty=PSY, eff=AddBoost True zero {def=2}}
   , MoveDesc "Baton Pass" 40 celebrate
@@ -680,9 +695,9 @@ moves =
   , MoveDesc "Bone Club" 20 tackle
       {ty=GRO, pow=65, acc=85, eff=10 :% Flinch}
   , MoveDesc "Bone Rush" 10 tackle
-      {ty=GRO, pow=25, acc=90, hits=5}
+      {ty=GRO, pow=25, acc=90, hits=(2,5)}
   , MoveDesc "Bonemerang" 10 tackle
-      {ty=GRO, pow=50, acc=90, hits=2}
+      {ty=GRO, pow=50, acc=90, hits=(2,2)}
   , MoveDesc "Boomburst" 10 tackle
       {ty=NOR, pow=140, cat=Special, targ=ADJACENT .|. WIDE, flags=SOUND}
   , MoveDesc "Bounce" 5 tackle
@@ -707,7 +722,7 @@ moves =
   , MoveDesc "Bubble Beam" 20 tackle
       {ty=WAT, pow=65, cat=Special, eff=10 :% AddBoost False zero {spe= -1}}
   , MoveDesc "Bug Bite" 20 tackle
-      {ty=BUG, pow=60, eff=EatBerry, flags=CONTACT}
+      {ty=BUG, pow=60, eff=EatBerry True, flags=CONTACT}
   , MoveDesc "Bug Buzz" 10 tackle
       {ty=BUG, pow=90, cat=Special, eff=10 :% AddBoost False zero {spD= -1}}
   , MoveDesc "Bulk Up" 20 celebrate
@@ -717,7 +732,7 @@ moves =
   , MoveDesc "Bullet Punch" 30 tackle
       {ty=STE, pow=40, pri=1, flags=CONTACT}
   , MoveDesc "Bullet Seed" 30 tackle
-      {ty=GRA, pow=25, hits=5}
+      {ty=GRA, pow=25, hits=(2,5)}
   , MoveDesc "Burn Up" 5 tackle
       {ty=FIR, pow=130, cat=Special, eff=SetType NON True}
   , MoveDesc "Burning Jealousy" 5 tackle
@@ -774,7 +789,7 @@ moves =
   , MoveDesc "Collision Torque" 10 tackle
       {ty=FIG, pow=100}
   , MoveDesc "Comet Punch" 15 tackle
-      {ty=NOR, pow=18, acc=85, hits=5, flags=CONTACT}
+      {ty=NOR, pow=18, acc=85, hits=(2,5), flags=CONTACT}
   , MoveDesc "Comeuppance" 10 tackle
       {ty=DAR, pow=1, eff=Comeuppance, flags=CONTACT}
   , MoveDesc "Confide" 20 celebrate
@@ -870,15 +885,15 @@ moves =
   , MoveDesc "Doom Desire" 5 tackle
       {ty=STE, pow=140, cat=Special, eff=Delay2Turns}
   , MoveDesc "Double Hit" 10 tackle
-      {ty=NOR, pow=35, acc=90, hits=2, flags=CONTACT}
+      {ty=NOR, pow=35, acc=90, hits=(2,2), flags=CONTACT}
   , MoveDesc "Double Iron Bash" 5 tackle
-      {ty=STE, pow=60, hits=2, eff=30 :% Flinch, flags=CONTACT}
+      {ty=STE, pow=60, hits=(2,2), eff=30 :% Flinch, flags=CONTACT}
   , MoveDesc "Double Kick" 30 tackle
-      {ty=FIG, pow=30, hits=2, flags=CONTACT}
+      {ty=FIG, pow=30, hits=(2,2), flags=CONTACT}
   , MoveDesc "Double Shock" 5 tackle
       {ty=ELE, pow=120, eff=RemoveType ELE, flags=CONTACT}
   , MoveDesc "Double Slap" 10 tackle
-      {ty=NOR, pow=15, hits=5, acc=85, flags=CONTACT}
+      {ty=NOR, pow=15, hits=(2,5), acc=85, flags=CONTACT}
   , MoveDesc "Double Team" 15 celebrate
       {ty=NOR, eff=AddBoost True zero {eva=1}}
   , MoveDesc "Double-Edge" 15 tackle
@@ -894,7 +909,7 @@ moves =
   , MoveDesc "Dragon Dance" 20 celebrate
       {ty=DRA, eff=AddBoost True zero {att=1, spe=1}, flags=DANCE}
   , MoveDesc "Dragon Darts" 10 tackle
-      {ty=DRA, pow=50, hits=2}
+      {ty=DRA, pow=50, hits=(2,2)}
   , MoveDesc "Dragon Energy" 5 tackle
       {ty=DRA, pow=150, eff=CutPwrUserHP, cat=Special}
   , MoveDesc "Dragon Hammer" 15 tackle
@@ -920,9 +935,9 @@ moves =
   , MoveDesc "Drum Beating" 10 tackle
       {ty=GRA, pow=80, eff=AddBoost False zero {spe= -1}}
   , MoveDesc "Dual Chop" 15 tackle
-      {ty=DRA, pow=40, acc=90, hits=2, flags=CONTACT}
+      {ty=DRA, pow=40, acc=90, hits=(2,2), flags=CONTACT}
   , MoveDesc "Dual Wingbeat" 10 tackle
-      {ty=FLY, pow=40, acc=90, hits=2, flags=CONTACT}
+      {ty=FLY, pow=40, acc=90, hits=(2,2), flags=CONTACT}
   , MoveDesc "Dynamax Cannon" 5 tackle
       {ty=DRA, pow=100, cat=Special, eff=DoubleDmgIfDynamax}
   , MoveDesc "Dynamic Punch" 5 tackle
@@ -1095,11 +1110,11 @@ moves =
   , MoveDesc "Frustration" 20 tackle
       {ty=NOR, pow=0, eff=PwrLowFriendship, flags=CONTACT}
   , MoveDesc "Fury Attack" 20 tackle
-      {ty=NOR, pow=15, acc=85, hits=5, flags=CONTACT}
+      {ty=NOR, pow=15, acc=85, hits=(2,5), flags=CONTACT}
   , MoveDesc "Fury Cutter" 20 tackle
       {ty=BUG, pow=40, acc=95, eff=EchoPower, flags=CONTACT}
   , MoveDesc "Fury Swipes" 15 tackle
-      {ty=NOR, pow=18, acc=80, hits=5, flags=CONTACT}
+      {ty=NOR, pow=18, acc=80, hits=(2,5), flags=CONTACT}
   , MoveDesc "Fusion Bolt" 5 tackle
       {ty=ELE, pow=100, eff=FusionBolt}
   , MoveDesc "Fusion Flare" 5 tackle
@@ -1112,7 +1127,7 @@ moves =
   , MoveDesc "Gastro Acid" 10 celebrate
       {ty=POI, targ=ADJACENT, eff=SuppressAbility}
   , MoveDesc "Gear Grind" 15 tackle
-      {ty=STE, pow=50, hits=2, acc=85, flags=CONTACT}
+      {ty=STE, pow=50, hits=(2,2), acc=85, flags=CONTACT}
   , MoveDesc "Gear Up" 20 celebrate
       {ty=STE, eff=GearUp, targ=WIDE .|. SELF .|. ALLIES}
   , MoveDesc "Genesis Supernova" 1 tackle
@@ -1233,7 +1248,10 @@ moves =
   , MoveDesc "Howl" 40 celebrate
       {ty=NOR, targ=ALLIES .|. SELF .|. WIDE, eff=AddBoost False zero {att=1}}
   , MoveDesc "Hurricane" 10 tackle
-      {ty=FLY, cat=Special, acc=70, pow=110, eff=30 :% Confuse}
+      {ty=FLY, cat=Special, acc=70, pow=110
+      ,eff = 30 :% Confuse
+          :+ PerfectAccuracyInWeather Rain
+      }
   , MoveDesc "Hydro Cannon" 5 tackle
       {ty=WAT, cat=Special, acc=90, pow=150, eff=Recharge}
   , MoveDesc "Hydro Pump" 5 tackle
@@ -1275,7 +1293,7 @@ moves =
   , MoveDesc "Icicle Crash" 10 tackle
       {ty=ICE, pow=85, acc=90, eff=30 :% Flinch}
   , MoveDesc "Icicle Spear" 10 tackle
-      {ty=ICE, pow=25, hits=5}
+      {ty=ICE, pow=25, hits=(2,5)}
   , MoveDesc "Icy Wind" 15 tackle
       {ty=ICE, cat=Special, pow=55, targ=ADJFOES .|. WIDE, eff=AddBoost False zero {spe= -1}}
   , MoveDesc "Imprison" 15 celebrate
@@ -1580,7 +1598,7 @@ moves =
   , MoveDesc "Pika Papow" 20 tackle
       {ty=ELE, cat=Special, pow=20, acc=0, eff=PikaPapow}
   , MoveDesc "Pin Missile" 20 tackle
-      {ty=BUG, pow=25, hits=5, acc=95}
+      {ty=BUG, pow=25, hits=(2,5), acc=95}
   , MoveDesc "Plasma Fists" 15 tackle
       {ty=ELE, pow=100, eff=IonDeluge}
   , MoveDesc "Play Nice" 20 celebrate
@@ -1588,7 +1606,7 @@ moves =
   , MoveDesc "Play Rough" 10 tackle
       {ty=FAI, acc=90, pow=90, eff=10 :% AddBoost False zero {att= -1}}
   , MoveDesc "Pluck" 20 tackle
-      {ty=FLY, pow=60, eff=EatBerry}
+      {ty=FLY, pow=60, eff=EatBerry True}
   , MoveDesc "Poison Fang" 15 tackle
       {ty=POI, pow=50, eff=50 :% EStatus Toxic}
   , MoveDesc "Poison Gas" 40 celebrate
@@ -1606,7 +1624,7 @@ moves =
   , MoveDesc "Poltergeist" 5 tackle
       {ty=GHO, pow=110, acc=90, eff=Poltergeist}
   , MoveDesc "Population Bomb" 10 tackle
-      {ty=NOR, pow=20, acc=90, hits=10} -- TODO: should be 1-10 hits, not 2-10
+      {ty=NOR, pow=20, acc=90, hits=(1,10)}
   , MoveDesc "Pounce" 20 tackle
       {ty=BUG, pow=50, eff=AddBoost False zero {spe= -1}}
   , MoveDesc "Pound" 35 tackle
@@ -1738,7 +1756,7 @@ moves =
   , MoveDesc "Roar of Time" 5 tackle
       {ty=DRA, cat=Special, pow=150, acc=90, eff=Recharge}
   , MoveDesc "Rock Blast" 10 tackle
-      {ty=ROC, pow=25, acc=90, hits=5}
+      {ty=ROC, pow=25, acc=90, hits=(2,5)}
   , MoveDesc "Rock Climb" 20 tackle
       {ty=NOR, pow=90, acc=85, eff=20 :% Confuse}
   , MoveDesc "Rock Polish" 20 celebrate
@@ -1790,7 +1808,7 @@ moves =
   , MoveDesc "Scald" 15 tackle
       {ty=WAT, cat=Special, pow=80, eff=30 :% EStatus Burn}
   , MoveDesc "Scale Shot" 20 tackle
-      {ty=DRA, pow=25, acc=90, hits=5, eff=AddBoost True zero{spe=1, def= -1}}
+      {ty=DRA, pow=25, acc=90, hits=(2,5), eff=AddBoost True zero{spe=1, def= -1}}
   , MoveDesc "Scary Face" 10 celebrate
       {ty=NOR, targ=ADJACENT, eff=AddBoost False zero{spe= -2}}
   , MoveDesc "Scorching Sands" 10 tackle
@@ -1943,7 +1961,7 @@ moves =
   , MoveDesc "Spider Web" 10 celebrate
       {ty=BUG, targ=ADJACENT, eff=NoSwitch}
   , MoveDesc "Spike Cannon" 15 tackle
-      {ty=NOR, pow=20, hits=5}
+      {ty=NOR, pow=20, hits=(2,5)}
   , MoveDesc "Spikes" 20 celebrate
       {ty=GRO, targ=FOES .|. WIDE, eff=EHazard Spikes}
   , MoveDesc "Spiky Shield" 10 celebrate
@@ -2016,7 +2034,7 @@ moves =
   , MoveDesc "Struggle Bug" 20 tackle
       {ty=BUG, cat=Special, pow=50, eff=AddBoost False zero {spA= -1}}
   , MoveDesc "Stuff Cheeks" 10 celebrate
-      {ty=NOR, eff=EatBerry :+ AddBoost True zero {def=2}}
+      {ty=NOR, eff=EatBerry True :+ AddBoost True zero {def=2}}
   , MoveDesc "Stun Spore" 30 celebrate
       {ty=GRA, targ=ADJACENT, acc=75, eff=EStatus Paralysis}
   , MoveDesc "Submission" 20 tackle
@@ -2060,14 +2078,116 @@ moves =
   , MoveDesc "Synthesis" 5 celebrate
       {ty=GRA, eff=RecoverWeather}
 
-  , MoveDesc "Tackle"  35 tackle
-      { flags=CONTACT }
+  , MoveDesc "Tackle" 35 tackle
+      {flags=CONTACT}
+  , MoveDesc "Tail Glow" 20 celebrate
+      {ty=BUG, eff=AddBoost True zero {spA=3}}
+  , MoveDesc "Tail Slap" 10 tackle
+      {ty=NOR, pow=25, acc=85, hits=(2,5)}
+  , MoveDesc "Tailwind" 15 celebrate
+      {ty=FLY, targ=ALLIES .|. WIDE, eff=Tailwind}
+  , MoveDesc "Take Down" 20 tackle
+      {ty=NOR, pow=90, acc=85, eff=Recoil 0.25}
+  , MoveDesc "Take Heart" 10 celebrate -- TODO: Verify the boost
+      {ty=PSY, eff=ClearStatus :+ AddBoost True zero {att=1,spA=1,def=1,spD=1}}
+  , MoveDesc "Tar Shot" 15 celebrate
+      {ty=ROC, targ=ADJACENT, eff=TarShot :+ AddBoost False zero{spe= -1}}
+  , MoveDesc "Taunt" 20 celebrate
+      {ty=ROC, targ=ADJACENT, eff=Taunt}
+  , MoveDesc "Tearful Look" 20 celebrate
+      {ty=ROC, targ=ADJACENT, eff=AddBoost False zero {att= -1, spA= -1}}
+  , MoveDesc "Teatime" 10 celebrate
+      {ty=ROC, targ=ALL .|. WIDE, eff=EatBerry False}
+  , MoveDesc "Techno Blast" 5 tackle
+      {ty=NOR, cat=Special, pow=120, eff=TechnoBlast}
+  -- tectonic rage
   , MoveDesc "Teeter Dance" 20 celebrate
       {ty=NOR, flags=DANCE, targ=ADJACENT .|. WIDE, eff=Confuse}
+  , MoveDesc "Telekinesis" 15 celebrate
+      {ty=PSY, targ=ADJACENT, eff=Telekinesis}
+  , MoveDesc "Teleport" 20 celebrate
+      {ty=PSY, eff=Switch True False False, pri= -6}
+  , MoveDesc "Tera Blast" 10 tackle
+      {ty=NOR, cat=Special, pow=80, eff=TeraBlast}
+  , MoveDesc "Terrain Pulse" 10 tackle
+      {ty=NOR, cat=Special, pow=50, eff=TerrainPulse}
+  , MoveDesc "Thief" 25 tackle
+      {ty=DAR, pow=60, eff=StealItem}
+  , MoveDesc "Thousand Arrows" 10 tackle -- TODO: Make sure this can hit flying-types
+      {ty=GRO, pow=90, targ=ADJFOES .|. WIDE, eff=GroundFlying}
+  , MoveDesc "Thousand Waves" 10 tackle
+      {ty=GRO, pow=90, targ=ADJFOES .|. WIDE, eff=NoSwitch}
+  , MoveDesc "Thrash" 10 tackle
+      {ty=NOR, pow=120, eff=Locked}
+  , MoveDesc "Throat Chop" 15 tackle
+      {ty=DAR, pow=80, eff=TroatChop}
+  , MoveDesc "Thunder" 10 tackle
+      { ty=ELE, cat=Special, pow=110, acc=70
+      , eff = 30 :% EStatus Paralysis
+           :+ DoublePowerIfInvul       Flying
+           :+ PerfectAccuracyInWeather Rain
+      }
+  , MoveDesc "Thunder Cage" 15 tackle
+      {ty=ELE, cat=Special, pow=80, acc=90, eff=ELocking ThunderCage}
+  , MoveDesc "Thunder Fang" 15 tackle
+      {ty=ELE, pow=65, acc=95, eff=10 :% Flinch :+ 10 :% EStatus Paralysis}
+  , MoveDesc "Thunder Punch" 15 tackle
+      {ty=ELE, pow=75, eff=10 :% EStatus Paralysis}
+  , MoveDesc "Thunder Shock" 30 tackle
+      {ty=ELE, cat=Special, pow=40, eff=10 :% EStatus Paralysis}
+  , MoveDesc "Thunder Wave" 20 celebrate
+      {ty=ELE, targ=ADJACENT, acc=90, eff=EStatus Paralysis}
+  , MoveDesc "Thunder Bolt" 15 tackle
+      {ty=ELE, cat=Special, pow=90, eff=10 :% EStatus Paralysis}
+  , MoveDesc "Thunderous Kick" 10 tackle
+      {ty=FIG, pow=90, eff=AddBoost False zero {def= -1}}
+  , MoveDesc "Tickle" 20 celebrate
+      {ty=NOR, targ=ADJACENT, eff=AddBoost False zero {att= -1, def= -1}}
+  , MoveDesc "Tidy Up" 10 celebrate
+      {ty=NOR, eff=ClearHazard :+ RemoveSubstitute :+ AddBoost True zero {att=1, spe=1}}
+  , MoveDesc "Topsy-Turvy" 20 celebrate
+      {ty=DAR, targ=ADJACENT, eff=InvBoost}
+  , MoveDesc "Torch Song" 10 tackle
+      {ty=FIR, cat=Special, pow=80, eff=AddBoost True zero{spA= 1}}
+  , MoveDesc "Torment" 15 celebrate
+      {ty=DAR, targ=ADJACENT, eff=Torment}
+  , MoveDesc "Toxic" 10 celebrate
+      {ty=POI, targ=ADJACENT, acc=90, eff=EStatus Toxic}
+  , MoveDesc "Toxic Spikes" 20 celebrate
+      {ty=GRO, targ=FOES .|. WIDE, eff=EHazard ToxicSpikes}
+  , MoveDesc "Toxic Thread" 20 celebrate
+      {ty=POI, targ=ADJACENT, eff=EStatus Poison :+ AddBoost False zero {spe= -1}}
+  , MoveDesc "Trailblaze" 20 tackle
+      {ty=GRA, pow=50, eff=AddBoost True zero {spe=1}}
+  , MoveDesc "Transform" 10 celebrate
+      {ty=NOR, targ=ADJACENT, eff=Transform}
   , MoveDesc "Tri Attack" 10 tackle
       {ty=NOR, cat=Special, pow=80, eff=20 :% Choose [EStatus Paralysis, EStatus Burn, EStatus Freeze]}
-  , MoveDesc "Trick or Treat" 20 celebrate
+  , MoveDesc "Trick" 10 celebrate
+      {ty=PSY, targ=ADJACENT, eff=SwapItem}
+  , MoveDesc "Trick Room" 10 celebrate
+      {ty=PSY, eff=TrickRoom, pri= -7}
+  , MoveDesc "Trick-or-Treat" 20 celebrate
       {ty=GHO, targ=ADJACENT, eff=AddType GHO}
+  , MoveDesc "Triple Arrows" 10 tackle
+      {ty=FIG, pow=90, eff=AddBoost True zero {cri=1} :+ AddBoost False zero {def= -1}}
+  , MoveDesc "Triple Axel" 10 tackle
+      {ty=ICE, pow=20, acc=90, eff=TripleAxel}
+  , MoveDesc "Triple Dive" 10 tackle
+      {ty=WAT, pow=30, acc=95, hits=(3,3)}
+  , MoveDesc "Triple Kick" 10 tackle
+      {ty=FIG, pow=10, acc=90, eff=TripleKick}
+  , MoveDesc "Trop Kick" 15 tackle
+      {ty=GRA, pow=70, eff=AddBoost False zero {add= -1}}
+  , MoveDesc "Trump Card" 5 celebrate
+      {ty=NOR, targ=ADJACENT, acc=0, eff=TrumpCard}
+  , MoveDesc "Twin Beam" 10 tackle
+      {ty=PSY, cat=Special, pow=40, hits=(2,2)}
+  , MoveDesc "Twineedle" 20 tackle
+      {ty=BUG, pow=25, hits=(2,2), eff=20 :% EStatus Poison}
+  -- Twinkle Tackle
+  , MoveDesc "Twister" 20 tackle
+      {ty=DRA, cat=Special, pow=40, eff=DoublePowerIfInvul Flying}
 
    -- | Switch { user, random, keepBoost :: Bool }
 
