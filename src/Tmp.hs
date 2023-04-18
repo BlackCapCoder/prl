@@ -5,6 +5,7 @@ import Pokemon.Move as Pok
 import Pokemon.Type as TYPE
 import Data.Text qualified as T
 import Data.List qualified as L
+import Data.Bits ((.|.))
 
 
 
@@ -96,5 +97,33 @@ wrongCat = do
         when (cat /= md.move.cat) do
         print (englishMoveName mov, cat)
 
+wrongTarget = do
+  api <- API.getPokeAPI
+
+  forM_ api.moves \mov -> do
+    case move2moveDesc mov of
+      Nothing -> pure ()
+      Just md -> do
+        let targ = case mov.target.name of
+              "specific-move"             -> Nothing
+              "selected-pokemon-me-first" -> Nothing
+              "ally"                      -> Just Pok.ALLIES
+              "users-field"               -> Just Pok.SELF
+              "user-or-ally"              -> Just $ Pok.ALLIES .|. Pok.SELF
+              "opponents-field"           -> Just $ Pok.FOES .|. Pok.WIDE
+              "user"                      -> Just Pok.SELF
+              "random-opponent"           -> Nothing
+              "all-other-pokemon"         -> Just $ Pok.ADJACENT .|. WIDE
+              "selected-pokemon"          -> Just Pok.ADJACENT
+              "all-opponents"             -> Just $ Pok.ADJFOES .|. WIDE
+              "entire-field"              -> Just $ Pok.ALL .|. WIDE
+              "all-pokemon"               -> Just $ Pok.ALL .|. WIDE
+              "all-allies"                -> Just $ Pok.ALLIES .|. Pok.SELF .|. WIDE
+              "user-and-allies"           -> Just $ Pok.ALLIES .|. Pok.SELF .|. WIDE
+              "fainting-pokemon"          -> Nothing
+              x                           -> error $ show x
+
+        when (isJust targ && targ /= Just md.move.targ) do
+        print (englishMoveName mov, mov.target.name)
 
 
