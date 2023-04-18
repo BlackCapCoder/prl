@@ -12,6 +12,7 @@ import Prelude   hiding (Category)
 type Ability = Int
 
 simpleID = -1
+insomniaID = -1
 
 
 data Category
@@ -96,6 +97,7 @@ data Effect
 
    | NoSwitch -- prevent target from switching out (mean look, block, ..)
    | Locked   -- user is locked to performing the move for 2 or 3 turns, then become confused (outrage, petal dance)
+   | Uproar   -- Locks for 3 turns, prevents sleep, no confusion
 
    | ClearStatus
    | ClearStatusParty -- all ally pokemon in party
@@ -170,6 +172,7 @@ data Effect
    | DoublePwrIfTargetHalfHP -- double power if target has 1/2 HP or less
    | CrushGrip               -- more powerful when opponent has higher HP
    | DoublePowerIfInvul Invulnerable
+   | DoublePwrIfTargetPoison
 
    | PwrLowFriendship  -- (frustration)
    | PwrHighFriendship -- (return)
@@ -346,7 +349,7 @@ data Effect
    | PayDay -- money after battle depending on users level
    | DoublePwrIfUserAttacked -- on this turn
    | UseHighestOfAttSpA
-   | PikaPapow -- Power increases when player's bond is stronger
+   | PwrHighBond -- Power increases when player's bond is stronger
 
    | PollenPuff -- damage if foe, heal if ally
    | Poltergeist -- fail if target does not have a held item
@@ -426,6 +429,14 @@ data Effect
                 -- Each hit has its own acc check, if one misses the move ends
 
    | TrumpCard -- Lower the PP, the higher the power
+   | Transform
+   | Torment
+   | VenomDrench -- Lower poisoned opponents spA, spe
+
+   | WakeUpSlap -- Double power if target asleep, but wakes it up
+   | WaterSport -- Weaken fire-type moves
+   | WeatherBall
+   | WringOut -- higher damage the more user HP
 
    deriving (Show, Eq, Ord)
 
@@ -493,6 +504,7 @@ data LockingMove
    | SandTomb
    | SnapTrap
    | ThunderCage
+   | Wrap
    deriving (Show, Eq, Ord, Enum, Bounded)
 
 ----
@@ -1596,7 +1608,7 @@ moves =
   , MoveDesc "Photon Geyser" 5 tackle
       {ty=PSY, cat=Special, pow=100, eff=UseHighestOfAttSpA}
   , MoveDesc "Pika Papow" 20 tackle
-      {ty=ELE, cat=Special, pow=20, acc=0, eff=PikaPapow}
+      {ty=ELE, cat=Special, pow=20, acc=0, eff=PwrHighBond}
   , MoveDesc "Pin Missile" 20 tackle
       {ty=BUG, pow=25, hits=(2,5), acc=95}
   , MoveDesc "Plasma Fists" 15 tackle
@@ -2178,7 +2190,7 @@ moves =
   , MoveDesc "Triple Kick" 10 tackle
       {ty=FIG, pow=10, acc=90, eff=TripleKick}
   , MoveDesc "Trop Kick" 15 tackle
-      {ty=GRA, pow=70, eff=AddBoost False zero {add= -1}}
+      {ty=GRA, pow=70, eff=AddBoost False zero {att= -1}}
   , MoveDesc "Trump Card" 5 celebrate
       {ty=NOR, targ=ADJACENT, acc=0, eff=TrumpCard}
   , MoveDesc "Twin Beam" 10 tackle
@@ -2189,16 +2201,99 @@ moves =
   , MoveDesc "Twister" 20 tackle
       {ty=DRA, cat=Special, pow=40, eff=DoublePowerIfInvul Flying}
 
-   -- | Switch { user, random, keepBoost :: Bool }
-
-
-  , MoveDesc "Water Pledge" 10 tackle
-      {ty=WAT, pow=80, cat=Special, eff=WaterPledge}
-
+  , MoveDesc "U-Turn" 20 tackle
+      {ty=BUG, pow=70, eff=Switch True False False}
+  , MoveDesc "Uproar" 10 tackle
+      {ty=NOR, cat=Special, pow=90, eff=Uproar}
+  , MoveDesc "V-create" 5 tackle
+      {ty=FIR, cat=Special, pow=180, acc=95, eff=AddBoost True zero {def= -1, spD= -1, spe= -1}}
+  , MoveDesc "Vacuum Wave" 30 tackle
+      {ty=FIG, cat=Special, pow=40, pri=1}
+  , MoveDesc "Veevee Volley" 20 tackle
+      {ty=NOR, pow=0, acc=0, eff=PwrHighBond}
+  , MoveDesc "Venom Drench" 20 celebrate
+      {ty=POI, targ=ADJACENT, eff=VenomDrench}
+  , MoveDesc "Venoshock" 10 tackle
+      {ty=POI, cat=Special, pow=65, eff=DoublePwrIfTargetPoison}
   , MoveDesc "Victory Dance" 10 celebrate
       {ty=FIG, flags=DANCE, eff=AddBoost True zero {att=1, def=1}}
+  , MoveDesc "Vine Whip" 25 tackle
+      {ty=GRA, pow=45}
+  , MoveDesc "Vise Grip" 30 tackle
+      {ty=NOR, pow=55}
+  , MoveDesc "Vital Throw" 10 tackle
+      {ty=FIG, pow=70, acc=0, pri= -1}
+  , MoveDesc "Volt Switch" 20 tackle
+      {ty=ELE, cat=Special, pow=70, eff=Switch True False False}
+  , MoveDesc "Volt Tackle" 15 tackle
+      {ty=ELE, pow=120, eff=Recoil (1/3) :+ 10 :% EStatus Paralysis}
 
-
+  , MoveDesc "Wake-Up Slap" 10 tackle
+      {ty=FIG, pow=70, eff=WakeUpSlap}
+  , MoveDesc "Water Gun" 25 tackle
+      {ty=WAT, cat=Special, pow=40}
+  , MoveDesc "Water Pledge" 10 tackle
+      {ty=WAT, cat=Special, pow=80, eff=WaterPledge}
+  , MoveDesc "Water Pulse" 20 tackle
+      {ty=WAT, cat=Special, pow=60, eff=20 :% Confuse}
+  , MoveDesc "Water Shuriken" 20 tackle
+      {ty=WAT, pow=15, hits=(2,5), pri=1}
+  , MoveDesc "Water Sport" 15 celebrate
+      {ty=WAT, eff=WaterSport}
+  , MoveDesc "Water Spout" 5 tackle
+      {ty=WAT, cat=Special, pow=150, eff=CutPwrUserHP}
+  , MoveDesc "Waterfall" 15 tackle
+      {ty=WAT, pow=80, eff=20 :% Flinch}
+  , MoveDesc "Waterfall" 15 tackle
+      {ty=WAT, pow=80, eff=20 :% Flinch}
+  , MoveDesc "Wave Crash" 10 tackle -- TODO: How much recoil? Raises user's "action speed"
+      {ty=WAT, pow=120, eff=Recoil (1/3)}
+  , MoveDesc "Weather Ball" 10 tackle
+      {ty=WAT, cat=Special, pow=50, eff=WeatherBall}
+  , MoveDesc "Whirlpool" 15 tackle
+      {ty=WAT, cat=Special, pow=35, acc=85, eff=ELocking Whirlpool}
+  , MoveDesc "Whirlwind" 20 celebrate
+      {ty=NOR, targ=ADJACENT, eff=Switch False True False}
+  , MoveDesc "Whicked Blow" 5 tackle
+      {ty=DAR, pow=75, crit=alwaysCrit, eff=IgnoreBoosts}
+  , MoveDesc "Whicked Torque" 5 tackle
+      {ty=DAR, pow=80}
+  , MoveDesc "Wide Guard" 10 celebrate
+      {ty=ROC, targ=ALLIES .|. WIDE, eff=WideGuard}
+  , MoveDesc "Wild Charge" 15 tackle
+      {ty=ELE, pow=90, eff=Recoil (1/4)}
+  , MoveDesc "Wildbolt Storm" 10 tackle
+      {ty=ELE, cat=Special, pow=100, acc=80, eff=EStatus Paralysis}
+  , MoveDesc "Will-O-Wisp" 15 celebrate
+      {ty=FIR, targ=ADJACENT, acc=85, eff=EStatus Burn}
+  , MoveDesc "Wing Attack" 35 tackle
+      {ty=FLY, pow=60}
+  , MoveDesc "Wish" 10 celebrate
+      {ty=NOR, eff=Wish}
+  , MoveDesc "Withdraw" 10 celebrate
+      {ty=WAT, eff=AddBoost True zero {def=1}}
+  , MoveDesc "Wood Hammer" 15 tackle
+      {ty=GRA, pow=120, eff=Recoil (1/3)}
+  , MoveDesc "Work Up" 30 celebrate
+      {ty=NOR, eff=AddBoost True zero {att=1, spA=1}}
+  , MoveDesc "Worry Seed" 10 celebrate
+      {ty=GRA, targ=ADJACENT, eff=SetAbility insomniaID}
+  , MoveDesc "Wrap" 20 tackle
+      {ty=NOR, pow=15, acc=90, eff=ELocking Wrap}
+  , MoveDesc "Wring Out" 5 tackle
+      {ty=NOR, cat=Special, pow=0, eff=WringOut}
+  , MoveDesc "X-Scissor" 15 tackle
+      {ty=BUG, pow=80}
+  , MoveDesc "Yawn" 10 celebrate
+      {ty=NOR, targ=ADJACENT, eff=Yawn}
+  , MoveDesc "Zap Cannon" 5 tackle
+      {ty=ELE, cat=Special, pow=120, acc=50, eff=EStatus Paralysis}
+  , MoveDesc "Zen Headbutt" 15 tackle
+      {ty=PSY, pow=80, acc=90, eff=20 :% Flinch}
+  , MoveDesc "Zing Zap" 10 tackle
+      {ty=ELE, pow=80, eff=30 :% Flinch}
+  , MoveDesc "Zippy Zap" 15 tackle
+      {ty=ELE, pow=50, crit=alwaysCrit}
   ]
 
 omniboost =
