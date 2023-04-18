@@ -23,7 +23,7 @@ data BattleMon = BattleMon
    , disabled    :: [(ID, Countdown)]
    , imprissoned :: [UID] -- pokemon that have used imprisson on us
    , taunt       :: Countdown
-   , torment     :: Countdown
+   , torment     :: Bool
    , echo        :: Countup  -- consequtive turns having used the same move
    , blocked     :: Bool     -- prevented from switching out
    , choice      :: Maybe ID -- locked into a move due to a held choice item
@@ -63,6 +63,8 @@ data BattleMon = BattleMon
    , quashed     :: Bool
    , tarShot     :: Bool
    , telekinesis :: Countdown -- Telekinesis has lots of rules- check bulbapedia!
+   , partialTrap :: Countdown -- partial trapping moves (bind, whirlpool, magma storm..)
+   , stockpiles  :: Int
    }
 
 newBattleMon api pok = BattleMon
@@ -72,7 +74,7 @@ newBattleMon api pok = BattleMon
   , perishCount = Nothing
   , encore      = Nothing
   , taunt       = 0
-  , torment     = 0
+  , torment     = False
   , blocked     = False
   , choice      = Nothing
   , echo        = 0
@@ -115,6 +117,8 @@ newBattleMon api pok = BattleMon
   , quashed     = False
   , tarShot     = False
   , telekinesis = 0
+  , partialTrap = 0
+  , stockpiles  = 0
   }
 
 ----

@@ -12,6 +12,7 @@ import System.Random
 import System.Random.Shuffle
 import Data.Text qualified as Text
 import Control.Monad.State
+import Data.Word
 
 type ID  = Int
 type UID = Int -- unique ID
@@ -24,7 +25,7 @@ data Pokemon = Pokemon
    , evs       :: Stat Int
    , ivs       :: Stat Int
    , gender    :: PokemonGender
-   , happiness :: Int
+   , happiness :: Word8
    , nickname  :: Maybe String
    , moves     :: [PokemonMove]
    , shiny     :: Bool

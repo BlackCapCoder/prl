@@ -237,7 +237,6 @@ tickTurnMon mon = mon
   , drowsy      = False
   , quashed     = False
   , taunt       = max 0 $ pred mon.taunt
-  , torment     = max 0 $ pred mon.torment
   , healBlock   = max 0 $ pred mon.healBlock
   , luckyChant  = max 0 $ pred mon.luckyChant
   , dynamax     = max 0 $ pred mon.dynamax
@@ -245,6 +244,7 @@ tickTurnMon mon = mon
   , destinyBond = max 0 $ pred mon.destinyBond
   , magnetRise  = max 0 $ pred mon.magnetRise
   , telekinesis = max 0 $ pred mon.telekinesis
+  , partialTrap = max 0 $ pred mon.partialTrap
   , perishCount = mon.perishCount <&> pred
   , encore = case mon.encore of
       Nothing      -> Nothing

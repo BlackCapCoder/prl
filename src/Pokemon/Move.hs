@@ -68,23 +68,26 @@ pattern WIDE     = 0b0000001 :: Target -- hit all targets if set, otherwise choo
 
 -- Fields
 --
-pattern DANCE   = 0b1                 :: FLAGS -- dance moves are copied by pokemon with dancer
-pattern SOUND   = 0b10                :: FLAGS -- pokemon with soundproof are immune
-pattern BULLET  = 0b100               :: FLAGS -- pokemon with bulletproof are immune
-pattern POWDER  = 0b1000              :: FLAGS -- pokemon holding safety googles are immune, overcoat
-pattern CONTACT = 0b10000             :: FLAGS -- if a move makes contact it may trigger additional effects
-pattern ZMOVE   = 0b100000            :: FLAGS -- z-moves can hit through protect at reduced damage
-pattern TURN1   = 0b1000000           :: FLAGS -- wether the move can only be used on the first turn
-pattern IGNSUB  = 0b10000000          :: FLAGS -- move can hit through substitute
-pattern PULSE   = 0b100000000         :: FLAGS -- aura and pulse based move (boosted by Mega Launcher)
-pattern BITE    = 0b1000000000        :: FLAGS -- bite based move (boosted by Strong Jaw)
-pattern EXPLODE = 0b10000000000       :: FLAGS -- explosive moves cannot be used with Damp present
-pattern PUNCH   = 0b100000000000      :: FLAGS -- punching moves (iron fist, punching glove)
-pattern SLICE   = 0b1000000000000     :: FLAGS -- slicing moves (sharpness)
-pattern WIND    = 0b10000000000000    :: FLAGS -- wind moves (wind power, wind rider)
-pattern SNATCH  = 0b100000000000000   :: FLAGS -- move can be stolen by snatch
-pattern MCOAT   = 0b1000000000000000  :: FLAGS -- move is affected by magic coat/magic bounce
-pattern KROCK   = 0b10000000000000000 :: FLAGS -- move has an additional 10% chance to flinch if user is holding king's rock
+pattern DANCE    = 0b1                    :: FLAGS -- dance moves are copied by pokemon with dancer
+pattern SOUND    = 0b10                   :: FLAGS -- pokemon with soundproof are immune
+pattern BULLET   = 0b100                  :: FLAGS -- pokemon with bulletproof are immune
+pattern POWDER   = 0b1000                 :: FLAGS -- pokemon holding safety googles are immune, overcoat
+pattern CONTACT  = 0b10000                :: FLAGS -- if a move makes contact it may trigger additional effects
+pattern ZMOVE    = 0b100000               :: FLAGS -- z-moves can hit through protect at reduced damage
+pattern TURN1    = 0b1000000              :: FLAGS -- wether the move can only be used on the first turn
+pattern IGNSUB   = 0b10000000             :: FLAGS -- move can hit through substitute
+pattern PULSE    = 0b100000000            :: FLAGS -- aura and pulse based move (boosted by Mega Launcher)
+pattern BITE     = 0b1000000000           :: FLAGS -- bite based move (boosted by Strong Jaw)
+pattern EXPLODE  = 0b10000000000          :: FLAGS -- explosive moves cannot be used with Damp present
+pattern PUNCH    = 0b100000000000         :: FLAGS -- punching moves (iron fist, punching glove)
+pattern SLICE    = 0b1000000000000        :: FLAGS -- slicing moves (sharpness)
+pattern WIND     = 0b10000000000000       :: FLAGS -- wind moves (wind power, wind rider)
+pattern SNATCH   = 0b100000000000000      :: FLAGS -- move can be stolen by snatch
+pattern MCOAT    = 0b1000000000000000     :: FLAGS -- move is affected by magic coat/magic bounce
+pattern KROCK    = 0b10000000000000000    :: FLAGS -- move has an additional 10% chance to flinch if user is holding king's rock
+pattern IGNPROT  = 0b100000000000000000   :: FLAGS -- move ignores protect
+pattern IGNBOOST = 0b1000000000000000000  :: FLAGS -- move ignores target's boosts
+pattern IGNABI   = 0b10000000000000000000 :: FLAGS -- move ignores target's ability
 
 -- TODO: Most (but not all) moves are affected mirror move
 -- List here: https://pokemon.fandom.com/wiki/Category:Moves_affected_by_Mirror_Move
@@ -120,8 +123,8 @@ data Effect
    | EHazard  Hazard
    | EInvul   Invulnerable -- enter a semi-invulnerable state. The move is delayed until next
                            -- turn, then the semi-invulnerable state ends.
-   | ELocking LockingMove -- prevent target from switching out AND damage over time (5 turns)
-                          -- each of these can be stacked!
+
+   | PartialTrap
 
    | NoSwitch -- prevent target from switching out (mean look, block, ..)
    | Locked   -- user is locked to performing the move for 2 or 3 turns, then become confused (outrage, petal dance)
@@ -131,7 +134,7 @@ data Effect
    | ClearStatusParty -- all ally pokemon in party
    | ClearScreen
    | ClearHazard
-   | MoveStatus -- transfer users status to target
+   | MoveStatus -- transfer users status to target. Fails if target is immune
 
    | AddBoost Bool (Boost Int) -- if true, target the user
    | AddBoostIfKO  (Boost Int) -- give user boost if attack KO's
@@ -142,7 +145,6 @@ data Effect
    | CopyBoost    -- user copies boosts from target
    | MoveBoost    -- move boosts from target to user
    | SwapBoost    -- swap boosts of target and user
-   | IgnoreBoosts -- attack ignore boosts
 
    | SetAbility  Ability -- worry seed, entrainment
    | CopyAbility CopyAbility
@@ -218,7 +220,6 @@ data Effect
    | Protect       -- protect, detect
    | WideGuard     -- like protect, but only for moves that hit multiple pokemon
    | Substitute
-   | IgnoreProtect -- the move can hit through protect (phantom force, horn drill, ..)
    | Feint
 
    -- Any foe that hits the user with a contact move, even if the user is protected,
@@ -361,7 +362,6 @@ data Effect
 
    | PwrInTerrain Terrain -- power increases in the given terrain (misty explosion, psyblade)
    | DoublePwrInTerrain Terrain
-   | IgnoreAbility -- Ignore the targets ability
 
    | RecoverWeather -- Recover an amount of health that varies with weather
    | MudSport -- Weakens the power of Electric-type moves
@@ -700,7 +700,7 @@ moves =
   , MoveDesc "Bide" 10 tackle
       {ty=NOR, targ=USER, eff=Bide, flags=CONTACT .|. KROCK, pri=1, acc=neverMiss}
   , MoveDesc "Bind" 20 tackle
-      {ty=NOR, pow=15, acc=85, eff=ELocking Bind, flags=CONTACT .|. KROCK}
+      {ty=NOR, pow=15, acc=85, eff=PartialTrap, flags=CONTACT .|. KROCK}
   , MoveDesc "Bite" 25 tackle
       {ty=DAR, pow=60, eff=30 :% Flinch, flags=CONTACT .|. BITE}
   , MoveDesc "Bitter Blade" 10 tackle
@@ -803,13 +803,13 @@ moves =
   , MoveDesc "Chilly Reception" 10 celebrate
       {ty=ICE, targ=ENTIRE_FIELD, eff=ChillyReception}
   , MoveDesc "Chip Away" 20 tackle
-      {ty=NOR, pow=70, eff=IgnoreBoosts, flags=CONTACT}
+      {ty=NOR, pow=70, flags=CONTACT .|. IGNBOOST}
   , MoveDesc "Chloroblast" 5 tackle
       {ty=GRA, pow=150, acc=95, cat=Special, eff=Recoil 0.5} -- TODO: Recoil is a constant 0.5x of users maximum HP
   , MoveDesc "Circle Throw" 10 tackle
       {ty=FIG, pow=60, acc=90, eff=Switch False True False, flags=CONTACT, pri= -6}
   , MoveDesc "Clamp" 15 tackle
-      {ty=WAT, pow=35, acc=85, eff=ELocking Clamp, flags=CONTACT}
+      {ty=WAT, pow=35, acc=85, eff=PartialTrap, flags=CONTACT}
   , MoveDesc "Clanging Scales" 5 tackle
       {ty=DRA, pow=110, cat=Special, eff=AddBoost True zero {def= -1}, targ=ADJFOES .|. WIDE, flags=SOUND .|. IGNSUB}
   , MoveDesc "Clangorous Soul" 5 celebrate
@@ -888,7 +888,7 @@ moves =
   , MoveDesc "Dark Void" 10 celebrate
       {ty=DAR, targ=ADJFOES .|. WIDE, eff=EStatus Sleep, flags=MCOAT}
   , MoveDesc "Darkest Lariat" 10 tackle
-      {ty=DAR, pow=85, eff=IgnoreBoosts, flags=CONTACT}
+      {ty=DAR, pow=85, flags=CONTACT .|. IGNBOOST}
   , MoveDesc "Dazzling Gleam" 10 tackle
       {ty=FAI, cat=Special, pow=80, targ=ADJFOES .|. WIDE}
   , MoveDesc "Decorate" 15 celebrate
@@ -1076,7 +1076,7 @@ moves =
   , MoveDesc "Fire Punch" 15 tackle
       {ty=FIR, pow=75, eff=10 :% EStatus Burn, flags=CONTACT .|. PUNCH}
   , MoveDesc "Fire Spin" 15 tackle
-      {ty=FIR, pow=35, cat=Special, eff=ELocking Firespin, flags=KROCK}
+      {ty=FIR, pow=35, cat=Special, eff=PartialTrap, flags=KROCK}
   , MoveDesc "First Impression" 10 tackle
       {ty=BUG, pow=90, flags=CONTACT .|. TURN1, pri=2}
   , MoveDesc "Fishious Rend" 10 tackle
@@ -1303,15 +1303,15 @@ moves =
   , MoveDesc "Hyper Beam" 5 tackle
       {ty=NOR, cat=Special, pow=150, eff=Recharge, acc=90, flags=KROCK}
   , MoveDesc "Hyper Drill" 5 tackle
-      {ty=NOR, pow=100, eff=IgnoreProtect, flags=CONTACT}
+      {ty=NOR, pow=100, flags=CONTACT .|. IGNPROT}
   , MoveDesc "Hyper Fang" 15 tackle
       {ty=NOR, pow=80, acc=90, eff=10 :% Flinch, flags=CONTACT .|. BITE}
   , MoveDesc "Hyper Voice" 10 tackle
       {ty=NOR, pow=90, cat=Special, targ=ADJFOES .|. WIDE, flags=SOUND .|. IGNSUB}
   , MoveDesc "Hyperspace Fury" 5 tackle
-      {ty=DAR, pow=100, acc=neverMiss, eff=IgnoreProtect :+ AddBoost True zero {def= -1}, flags=IGNSUB}
+      {ty=DAR, pow=100, acc=neverMiss, eff=AddBoost True zero {def= -1}, flags=IGNSUB .|. IGNPROT}
   , MoveDesc "Hyperspace Hole" 5 tackle
-      {ty=PSY, cat=Special, acc=neverMiss, pow=80, eff=IgnoreProtect, flags=IGNSUB}
+      {ty=PSY, cat=Special, acc=neverMiss, pow=80, flags=IGNSUB .|. IGNPROT}
   , MoveDesc "Hypnosis" 20 celebrate
       {ty=PSY, acc=60, eff=EStatus Sleep, targ=ADJACENT, flags=MCOAT}
 
@@ -1347,7 +1347,7 @@ moves =
       {ty=FIR, cat=Special, pow=100, acc=50, eff=EStatus Burn}
   -- Inferno overdrive
   , MoveDesc "Infestation" 20 tackle
-      {ty=BUG, cat=Special, pow=20, eff=ELocking Infestation, flags=CONTACT}
+      {ty=BUG, cat=Special, pow=20, eff=PartialTrap, flags=CONTACT}
   , MoveDesc "Ingrain" 20 celebrate
       {ty=GRA, eff=Ingrain, flags=SNATCH}
   , MoveDesc "Instruct" 15 celebrate
@@ -1458,7 +1458,7 @@ moves =
   , MoveDesc "Magical Torque" 10 tackle
       {ty=FAI, pow=100}
   , MoveDesc "Magma Storm" 5 tackle
-      {ty=FIR, cat=Special, pow=100, acc=75, eff=ELocking MagmaStorm, flags=KROCK}
+      {ty=FIR, cat=Special, pow=100, acc=75, eff=PartialTrap, flags=KROCK}
   , MoveDesc "Magnet Bomb" 20 tackle
       {ty=STE, pow=60, acc=neverMiss, flags=BULLET .|. KROCK}
   , MoveDesc "Magnet Rise" 10 celebrate
@@ -1535,7 +1535,7 @@ moves =
   , MoveDesc "Moonblast" 15 tackle
       {ty=FAI, cat=Special, pow=95, eff=30 :% AddBoost False zero {spA= -1}}
   , MoveDesc "Moongeist Beam" 5 tackle
-      {ty=GHO, cat=Special, pow=100, eff=IgnoreAbility}
+      {ty=GHO, cat=Special, pow=100, flags=IGNABI}
   , MoveDesc "Moonlight" 5 celebrate
       {ty=FAI, eff=RecoverWeather, flags=SNATCH}
   , MoveDesc "Morning Sun" 5 celebrate
@@ -1633,7 +1633,7 @@ moves =
   , MoveDesc "Petal Dance" 10 tackle
       {ty=GRA, cat=Special, pow=120, flags=DANCE .|. CONTACT .|. KROCK, eff=Locked}
   , MoveDesc "Phantom Force" 10 tackle
-      {pow=90, ty=GHO, eff=EInvul Phantom :+ IgnoreProtect, flags=CONTACT, acc=neverMiss}
+      {pow=90, ty=GHO, eff=EInvul Phantom, flags=CONTACT .|. IGNPROT, acc=neverMiss}
   , MoveDesc "Photon Geyser" 5 tackle
       {ty=PSY, cat=Special, pow=100, eff=UseHighestOfAttSpA}
   , MoveDesc "Pika Papow" 20 tackle
@@ -1751,7 +1751,7 @@ moves =
   , MoveDesc "Rage Powder" 20 celebrate
       {ty=BUG, eff=FollowMe, flags=POWDER, pri=2} -- TODO: Make sure safety-googles ignores this!
   , MoveDesc "Raging Bull" 10 tackle -- TODO: Does this ignore protect?
-      {ty=NOR, pow=90, eff=IgnoreProtect :+ ClearScreen :+ RagingBull, flags=CONTACT}
+      {ty=NOR, pow=90, eff=ClearScreen :+ RagingBull, flags=CONTACT .|. IGNPROT}
   , MoveDesc "Raging Fury" 10 tackle
       {ty=FIR, pow=120, eff=RagingFury}
   , MoveDesc "Rain Dance" 5 celebrate
@@ -1830,7 +1830,7 @@ moves =
   , MoveDesc "Sacred Fire" 5 tackle
       {ty=FIR, pow=100, acc=95, eff=50 :% EStatus Burn}
   , MoveDesc "Sacred Sword" 15 tackle
-      {ty=FIG, pow=90, eff=IgnoreBoosts, flags=CONTACT .|. SLICE}
+      {ty=FIG, pow=90, flags=CONTACT .|. SLICE .|. IGNBOOST}
   , MoveDesc "Safeguard" 25 celebrate
       {ty=NOR, eff=Safeguard, flags=SNATCH}
   , MoveDesc "Salt Cure" 15 tackle
@@ -1838,7 +1838,7 @@ moves =
   , MoveDesc "Sand Attack" 15 celebrate
       {ty=GRO, targ=ADJACENT, eff=AddBoost False zero {acc= -1}, flags=MCOAT}
   , MoveDesc "Sand Tomb" 15 tackle
-      {ty=GRO, pow=35, acc=85, eff=ELocking SandTomb, flags=KROCK}
+      {ty=GRO, pow=35, acc=85, eff=PartialTrap, flags=KROCK}
   , MoveDesc "Sandsear Storm" 10 tackle
       {ty=GRO, targ=ALL_OPPONENTS, cat=Special, pow=100, acc=80, eff=EStatus Burn, flags=WIND}
   , MoveDesc "Sandstorm" 10 celebrate
@@ -1881,7 +1881,7 @@ moves =
   , MoveDesc "Shadow Claw" 15 tackle
       {ty=GHO, pow=70, crit=1, flags=CONTACT .|. KROCK}
   , MoveDesc "Shadow Force" 5 tackle
-      {ty=GHO, pow=120, eff=EInvul Phantom :+ IgnoreProtect, flags=CONTACT .|. KROCK, acc=neverMiss}
+      {ty=GHO, pow=120, eff=EInvul Phantom, flags=CONTACT .|. KROCK .|. IGNPROT, acc=neverMiss}
   , MoveDesc "Shadow Punch" 20 tackle
       {ty=GHO, pow=60, acc=neverMiss, flags=CONTACT .|. PUNCH .|. KROCK}
   , MoveDesc "Shadow Sneak" 30 tackle
@@ -1962,7 +1962,7 @@ moves =
   , MoveDesc "Smokescreen" 20 celebrate
       {ty=NOR, targ=ADJACENT, eff=AddBoost False zero {acc= -1}, flags=MCOAT}
   , MoveDesc "Snap Trap" 15 tackle
-      {ty=GRA, pow=35, eff=ELocking SnapTrap, flags=CONTACT}
+      {ty=GRA, pow=35, eff=PartialTrap, flags=CONTACT}
   , MoveDesc "Snarl" 15 tackle
       {ty=DAR, cat=Special, pow=55, acc=95, targ=ADJFOES .|. WIDE, eff=AddBoost False zero{spA= -1}, flags=SOUND .|. IGNSUB}
   , MoveDesc "Snatch" 10 celebrate
@@ -2086,7 +2086,7 @@ moves =
   , MoveDesc "Sunny Day" 5 celebrate
       {ty=FIR, targ=ENTIRE_FIELD, eff=EWeather Sun}
   , MoveDesc "Sunsteel Strike" 5 tackle
-      {ty=STE, pow=100, eff=IgnoreAbility, flags=CONTACT}
+      {ty=STE, pow=100, flags=CONTACT .|. IGNABI}
   , MoveDesc "Super Fang" 10 tackle
       {ty=NOR, pow=0, acc=90, eff=HalfHP, flags=CONTACT .|. KROCK}
   , MoveDesc "Superpower" 5 tackle
@@ -2097,7 +2097,7 @@ moves =
   , MoveDesc "Surf" 15 tackle
       {ty=WAT, cat=Special, pow=90, targ=ADJACENT .|. WIDE, flags=KROCK}
   , MoveDesc "Surging Strikes" 5 tackle
-      {ty=WAT, pow=25, crit=alwaysCrit, eff=IgnoreBoosts, flags=CONTACT .|. PUNCH}
+      {ty=WAT, pow=25, crit=alwaysCrit, flags=CONTACT .|. PUNCH .|. IGNBOOST}
   , MoveDesc "Swagger" 15 celebrate
       {ty=NOR, targ=ADJACENT, acc=85, eff=Confuse :+ AddBoost False zero {att=2}, flags=MCOAT}
   , MoveDesc "Swallow" 10 celebrate
@@ -2169,7 +2169,7 @@ moves =
            :+ PerfectAccuracyInWeather Rain
       }
   , MoveDesc "Thunder Cage" 15 tackle
-      {ty=ELE, cat=Special, pow=80, acc=90, eff=ELocking ThunderCage}
+      {ty=ELE, cat=Special, pow=80, acc=90, eff=PartialTrap}
   , MoveDesc "Thunder Fang" 15 tackle
       {ty=ELE, pow=65, acc=95, eff=10 :% Flinch :+ 10 :% EStatus Paralysis, flags=CONTACT .|. BITE .|. KROCK}
   , MoveDesc "Thunder Punch" 15 tackle
@@ -2278,11 +2278,11 @@ moves =
   , MoveDesc "Weather Ball" 10 tackle
       {ty=NOR, cat=Special, pow=50, eff=WeatherBall, flags=BULLET .|. KROCK}
   , MoveDesc "Whirlpool" 15 tackle
-      {ty=WAT, cat=Special, pow=35, acc=85, eff=ELocking Whirlpool, flags=KROCK}
+      {ty=WAT, cat=Special, pow=35, acc=85, eff=PartialTrap, flags=KROCK}
   , MoveDesc "Whirlwind" 20 celebrate
       {ty=NOR, targ=ADJACENT, eff=Switch False True False, pri= -6, flags=IGNSUB .|. WIND}
   , MoveDesc "Wicked Blow" 5 tackle
-      {ty=DAR, pow=80, crit=alwaysCrit, eff=IgnoreBoosts, flags=CONTACT .|. PUNCH}
+      {ty=DAR, pow=80, crit=alwaysCrit, flags=CONTACT .|. PUNCH .|. IGNBOOST}
   , MoveDesc "Wicked Torque" 10 tackle
       {ty=DAR, pow=80}
   , MoveDesc "Wide Guard" 10 celebrate
@@ -2308,7 +2308,7 @@ moves =
   , MoveDesc "Worry Seed" 10 celebrate
       {ty=GRA, targ=ADJACENT, eff=SetAbility insomniaID, flags=MCOAT}
   , MoveDesc "Wrap" 20 tackle
-      {ty=NOR, pow=15, acc=90, eff=ELocking Wrap, flags=CONTACT .|. KROCK}
+      {ty=NOR, pow=15, acc=90, eff=PartialTrap, flags=CONTACT .|. KROCK}
   , MoveDesc "Wring Out" 5 tackle
       {ty=NOR, cat=Special, pow=0, eff=WringOut, flags=CONTACT}
   , MoveDesc "X-Scissor" 15 tackle

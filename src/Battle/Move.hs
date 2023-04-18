@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -Wincomplete-patterns #-}
+{-# OPTIONS_GHC -Wno-ambiguous-fields #-}
 module Battle.Move where
 
 import Pokemon.Move as Move
@@ -53,8 +54,8 @@ runEffect env@MoveEnv {..} eff = do
 
     Attract -> do
       if ( user.pokemon.gender /= Genderless
-         && targ.pokemon.gender /= Genderless
-         && user.pokemon.gender /= targ.pokemon.gender
+        && targ.pokemon.gender /= Genderless
+        && user.pokemon.gender /= targ.pokemon.gender
          )
       then do
         putTarget targ { attraction = IntSet.insert user.pokemon.uid targ.attraction }
@@ -101,25 +102,18 @@ runEffect env@MoveEnv {..} eff = do
       | field.wonderRoom > 0 -> put Battle {field = field { wonderRoom=3 }, ..}
       | otherwise            -> put Battle {field = field { wonderRoom=0 }, ..}
 
-    Tailwind -> put Battle
-      { field = field { lane1 = field.lane1 {tailwind=3} }, .. }
-
     LuckyChant -> do
       putUser user { luckyChant = 3 }
 
     EStatus s -> do
       when (isNothing targ.pokemon.status) do
+      unless (isImmuneToStatus targ s) do
       case s of
-        Move.Paralysis
-          | ELE `notElem` targ.pokemon.types -> putTargetStatus env $ Just Pok.Paralysis
-        Move.Burn
-          | FIR `notElem` targ.pokemon.types -> putTargetStatus env $ Just Pok.Burn
-        Move.Freeze
-          | ICE `notElem` targ.pokemon.types -> putTargetStatus env $ Just Pok.Freeze
-        Move.Poison
-          | POI `notElem` targ.pokemon.types -> putTargetStatus env $ Just Pok.Poison
-        Move.Toxic
-          | POI `notElem` targ.pokemon.types -> putTargetStatus env $ Just $ Pok.Toxic 0
+        Move.Paralysis -> putTargetStatus env $ Just Pok.Paralysis
+        Move.Burn      -> putTargetStatus env $ Just Pok.Burn
+        Move.Freeze    -> putTargetStatus env $ Just Pok.Freeze
+        Move.Poison    -> putTargetStatus env $ Just Pok.Poison
+        Move.Toxic     -> putTargetStatus env $ Just $ Pok.Toxic 0
         Move.Sleep -> do
           roll <- liftIO $ randomRIO (1, 3)
           putTargetStatus env $ Just $ Pok.Sleep roll -- TODO: early bird, insomnia
@@ -179,12 +173,14 @@ runEffect env@MoveEnv {..} eff = do
     EInvul Move.Phantom -> putUser user
       { semiInvul = Just Bat.Phantom }
 
-    ELocking _ -> error "TODO: Locking damage-over-time moves"
+    PartialTrap -> do
+      when (targ.partialTrap < 1) do
+      turns <- liftIO $ randomRIO (4,5) -- 7 if target is holding a grip claw
+      putTarget targ
+        { partialTrap = turns }
 
     NoSwitch -> putTarget targ
       { blocked = True }
-
-    Locked -> error "TODO: Locking moves"
 
     ClearStatus ->
       putTargetStatus env Nothing
@@ -211,8 +207,6 @@ runEffect env@MoveEnv {..} eff = do
     AddBoost True b -> putUser user
       { boosts = user.boosts + b }
 
-    AddBoostIfKO _ -> error "AddBoostIfKO"
-
     AddRandomBoost n -> do
       roll <- liftIO $ randomRIO (1, 5)
       putTarget targ
@@ -223,6 +217,7 @@ runEffect env@MoveEnv {..} eff = do
             3 -> zero {acc=0, spA=n}
             4 -> zero {acc=0, spD=n}
             5 -> zero {acc=0, spe=n}
+            _ -> error "Unreachable"
         }
 
     ClearBoost -> putTarget targ
@@ -242,12 +237,8 @@ runEffect env@MoveEnv {..} eff = do
       putUser   user { boosts = targ.boosts }
       putTarget targ { boosts = user.boosts }
 
-    IgnoreBoosts -> error "IgnoreBoosts"
-
     SetAbility a -> putTarget targ
       { pokemon = targ.pokemon { ability = a } }
-
-    CopyAbility Target2Allies -> error "CopyAbility Target2Allies"
 
     CopyAbility Target2User -> putUser user
       { pokemon = user.pokemon { ability = targ.pokemon.ability } }
@@ -274,10 +265,6 @@ runEffect env@MoveEnv {..} eff = do
     RemoveType ty -> putTarget targ
       { pokemon = targ.pokemon { types = filter (/=ty) targ.pokemon.types } }
 
-    Camouflage -> error "Camouflage"
-    Recharge   -> error "Recharge"
-    Precharge  -> error "Precharge"
-
     SwapAttDef -> putTarget targ
       { stats = targ.stats { att = targ.stats.def, def = targ.stats.att, hp=targ.stats.hp } }
 
@@ -303,17 +290,11 @@ runEffect env@MoveEnv {..} eff = do
       putUser   user { stats = user.stats {hp=user.stats.hp, def=targ.stats.def, spD=targ.stats.spD} }
       putTarget targ { stats = targ.stats {hp=targ.stats.hp, def=user.stats.def, spD=user.stats.spD} }
 
-    Switch {} -> error "Switch"
-
     Recover n -> putTarget targ
       { pokemon = targ.pokemon
         { hp = max (fi targ.stats.hp) $ targ.pokemon.hp + round (fi targ.stats.hp * n)
         }
       }
-
-    Drain _         -> error "Drain"
-    DrainSleeping _ -> error "DrainSleeping"
-    PainSplit       -> error "PainSplit" -- TODO: Lazy
 
     MatchUserHP -> putTarget targ
       { pokemon = targ.pokemon { hp = min targ.stats.hp user.pokemon.hp } }
@@ -339,33 +320,6 @@ runEffect env@MoveEnv {..} eff = do
         }
       }
 
-    CutPwrUserHP   -> error "CutPwrUserHP"
-    RaisePwrUserHP -> error "RaisePwrUserHP"
-    AddPwr         -> error "AddPwr"
-    UseDef         -> error "UseDef"
-
-    DoublePwrNoItem          -> error "DoublePwrNoItem"
-    DoublePwrIfHit           -> error "DoublePwrIfHit"
-    DoublePwrIfTargetFaster  -> error "DoublePwrIfTargetFaster"
-    DoublePwrIfTargetSlower  -> error "DoublePwrIfTargetSlower"
-    DoubleDmgIfTargetStatus  -> error "DoubleDmgIfTargetStatus"
-    DoublePwrIfUserStatus    -> error "DoublePwrIfUserStatus"
-    DoubleDmgIfDynamax       -> error "DoubleDmgIfDynamax"
-    DoublePwrIfTargetHalfHP  -> error "DoublePwrIfTargetHalfHP"
-    CrushGrip                -> error "CrushGrip"
-    DoublePowerIfInvul _     -> error "DoublePowerIfInvul"
-
-    PwrLowFriendship   -> error "PwrLowFriendship"
-    PwrHighFriendship  -> error "PwrHighFriendship"
-    PwrHeavyTarget     -> error "PwrHeavyTarget"
-    PwrHeavyUser       -> error "PwrHeavyUser"
-    PwrInHarshSunlight -> error "PwrInHarshSunlight"
-
-    EchoPower  -> error "EchoPower"
-    SpeedPower -> error "SpeedPower"
-
-    Recoil _ -> error "Recoil"
-
     Struggle ->
       putUser user
         { pokemon = user.pokemon
@@ -380,8 +334,7 @@ runEffect env@MoveEnv {..} eff = do
           }
         }
 
-    Protect ->
-      protectTarget env
+    Protect -> protectTarget env
 
     WideGuard ->
       putTarget targ { wideGuard = True }
@@ -395,51 +348,6 @@ runEffect env@MoveEnv {..} eff = do
         , pokemon = targ.pokemon { hp = targ.pokemon.hp - health }
         }
 
-    IgnoreProtect -> error "IgnoreProtect"
-
-    Endure -> putTarget targ
-      { enduring = True }
-
-    Don'tKill   -> error "Don'tKill"
-    FinalGambit -> error "FinalGambit"
-    BeakBlast   -> error "BeakBlast"
-    ShieldTrap  -> error "ShieldTrap"
-
-    DestinyBond -> putTarget targ
-      { destinyBond = 1 }
-
-    Wish        -> error "Wish"
-    Delay2Turns -> error "Delay2Turns"
-    UserPrimary -> error "UserPrimary"
-    ExtraType _ -> error "ExtraType"
-
-    Snatch -> putTarget targ
-      { snatching = True }
-
-    Instruct -> error "Instruct"
-    AllySwap -> error "AllySwap"
-
-    Taunt   -> putTarget targ { taunt  = 3 }
-    Embargo -> putTarget targ { embargo = 3 }
-    Encore      -> error "Encore"
-    Disable     -> error "Disable"
-    Metronome   -> error "Metronome"
-    Assist      -> error "Assist"
-    AfterYou    -> error "AfterYou"
-    MorpekoMode -> error "MorpekoMode"
-
-    UserDies -> putUser user
-      { pokemon = user.pokemon { hp = 0 } }
-
-    Autotomize -> error "Autotomize"
-    AxeKick    -> error "AxeKick"
-    BaddyBad   -> error "BaddyBad"
-    BeatUp     -> error "BeatUp"
-    Belch      -> error "Belch"
-    Bestow     -> error "Bestow"
-    BodyPress  -> error "BodyPress"
-    EatBerry _ -> error "EatBerry"
-
     BurnIfBoosted -> do
       when (isNothing targ.pokemon.status && any (>0) targ.boosts) do
       putTargetStatus env (Just Pok.Burn)
@@ -452,16 +360,6 @@ runEffect env@MoveEnv {..} eff = do
       putTarget targ
         { boosts = targ.boosts + zero { spA= -2, acc=0 } }
 
-    Charge -> putTarget targ { charged = True }
-
-    ChillyReception     -> error "ChillyReception"
-    BoostSuperEffective -> error "BoostSuperEffective"
-    Comeuppance         -> error "Comeuppance"
-    Conversion          -> error "Conversion"
-    Conversion2         -> error "Conversion2"
-    Copycat             -> error "Copycat"
-    CoreEnforcer        -> error "CoreEnforcer"
-
     RemoveItem -> putTarget targ
       { pokemon = targ.pokemon { heldItem = Nothing } }
 
@@ -469,19 +367,6 @@ runEffect env@MoveEnv {..} eff = do
       putTarget targ { pokemon = targ.pokemon { heldItem = Nothing } }
       when (isNothing user.pokemon.heldItem) do
       putUser user { pokemon = user.pokemon { heldItem = targ.pokemon.heldItem } }
-
-    Safeguard -> editLane2 \l -> l
-      { safeguard = 3 }
-
-    CraftyShield      -> error "CraftyShield"
-    Defog             -> error "Defog"
-    RemovePP _        -> error "RemovePP"
-    ExpandingForce    -> error "ExpandingForce"
-    NoFleeingNextTurn -> error "NoFleeingNextTurn"
-
-    FirePledge  -> error "FirePledge"
-    WaterPledge -> error "WaterPledge"
-    GrassPledge -> error "GrassPledge"
 
     BellyDrum -> do
       let dmg = div targ.stats.hp 2
@@ -491,90 +376,18 @@ runEffect env@MoveEnv {..} eff = do
         , boosts  = targ.boosts { att=6, acc=targ.boosts.acc }
         }
 
-    FilletAway -> error "FilletAway"
-
     -- TODO: This will swap things like tailwind, screens and safeguard.
     -- Verify that this is correct behavior
     SwapFieldEffects -> do
       editLane1 (const field.lane2)
       editLane2 (const field.lane1)
 
-    Bide       -> error "Bide"
-    MirrorCoat -> error "MirrorCoat"
-    Counter    -> error "Counter"
 
-    AquaRing -> putTarget targ { aquaRing  = True }
-    Ingrain  -> putTarget targ { ingrained = True }
-
-    DamageWithSplinters -> error "DamageWithSplinters"
-    DieHealSwitchIn     -> error "DieHealSwitchIn"
-    SplashDamage        -> error "SplashDamage"
-    Fling               -> error "Fling"
-    FloralHealing       -> error "FloralHealing"
-    FloralShield        -> error "FloralShield"
-
-    FlinchIfHit             -> error "FlinchIfHit"
-    FollowMe                -> error "FollowMe"
-    Foresight               -> error "Foresight"
-    UseTargetAtt            -> error "UseTargetAtt"
-    SuperEffectiveAgainst _ -> error "SuperEffectiveAgainst _"
-
-    FusionBolt  -> error "FusionBolt"
-    FusionFlare -> error "FusionFlare"
-
-    GearUp       -> error "GearUp"
-    MagneticFlux -> error "MagneticFlux"
-
-    NoSpam      -> error "NoSpam"
-    GlaiveRush  -> error "GlaiveRush"
-    GlitzyGlow  -> error "GlitzyGlow"
-    GrassyGlide -> error "GrassyGlide"
-    Grudge      -> error "Grudge"
-    GyroBall    -> error "GyroBall"
-    HappyHour   -> error "HappyHour"
-    HealBlock   -> putTarget targ { healBlock = 5 }
-    HelpingHand -> error "HelpingHand"
-    HiddenPower -> error "HiddenPower"
-
-    DamageUserIfMiss _ -> error "DamageUserIfMiss"
-    Scaling5Turns -> error "Scaling5Turns"
-    DefenceCurlUsed -> putTarget targ { defenceCurl = True }
-    DoubleDmgIfDefenceCurlUsed -> error "DoubleDmgIfDefenceCurlUsed"
-    ClearTerrain -> editField \f -> f { terrain = Nothing }
-    Imprison -> error "Imprison"
-    RemoveBerry _ -> error "RemoveBerry"
-
-    IonDeluge -> error "IonDeluge"
-    NoSwitchUserAndTarget -> error "NoSwitchUserAndTarget"
-    Judgment -> error "Judgement"
-    JungleHealing -> error "JungleHealing"
-    LaserFocus -> putTarget targ { focused = True }
-    DoublePwrIfUserDebuff -> error "DoublePwrIfUserDebuff"
-    AllOtherMovesUsed -> error "AllOtherMovesUsed"
-    LastRespects -> error "LastRespects"
-    LightThatBurnsTheSky -> error "LightThatBurnsTheSky"
-    LockOn -> putTarget targ { lockedOn = True }
-    MagicCoat -> putTarget targ { magicCoat = True }
-    MagnetRise -> putTarget targ { magnetRise = 5 }
-    Magnitude -> error "Magnitude"
-    MeFirst -> error "MeFirst"
-    MatchTarget'sDamage _ -> error "MatchTarget'sDamage"
-    Mimic -> error "Mimic"
     MiracleEye -> putTarget targ
       { miracleEye = True
-      , boosts = targ.boosts { eva = 0 }
+      , boosts     = targ.boosts { eva = 0 }
       }
-    MirrorMove -> error "MirrorMove"
-    Mist -> putTarget targ { mist=True }
 
-    PwrInTerrain _ -> error "PwrInTerrain"
-    IgnoreAbility -> error "IgnoreAbility"
-
-    RecoverWeather -> error "RecoverWeather"
-    MudSport -> editField \l -> l { mudSport = 3 }
-    MultiAttack -> error "MultiAttack"
-    NaturalGift -> error "NaturalGift"
-    NaturePower -> error "NaturePower"
 
     Nightmare -> do
       when (isAsleep targ.pokemon) do
@@ -584,89 +397,242 @@ runEffect env@MoveEnv {..} eff = do
           }
         }
 
-    Uproar -> error "Uproar"
-    MoveStatus -> error "MoveStatus"
-    CopyType -> error "CopyType"
-    SwapOffDef -> error "SwapOffDef"
-    SwpSpe -> error "SwpSpe"
-    DoublePwrIfTargetPoison -> error "DoublePwrIfTargetPoison"
-    IfUserHitByContactMove _ -> error "IfUserHitByContactMove"
-    SwapItem -> error "SwapItem"
-    DoublePwrInTerrain _ -> error "DoublePwrInTerrain"
-    Octolock -> error "Octolock"
-    OdorSleuth -> error "OdorSleuth"
-    PayDay -> error "PayDay"
-    DoublePwrIfUserAttacked -> error "DoublePwrIfUserAttacked"
-    UseHighestOfAttSpA -> error "UseHighestOfAttSpA"
-    PwrHighBond -> error "PwrHighBond"
-    PollenPuff -> error "PollenPuff"
-    Poltergeist -> error "Poltergeist"
-    Powder -> error "Powder"
-    Present -> error "Present"
-    Psywave -> error "Psywave"
-    Punishment -> error "Punishment"
-    Purify -> error "Purify"
-    Pursuit -> error "Pursuit"
-    Quash -> putTarget targ {quashed=True}
-    QuickGuard -> error "QuickGuard"
-    Rage -> error "Rage"
-    RageFist -> error "RageFist"
-    RagingBull -> error "RagingBull"
-    RagingFury -> error "RagingFury"
-    Recycle -> error "Recycle"
-    Refresh -> error "Refresh"
-    SleepFor2Turns -> error "SleepFor2Turns"
+    MoveStatus ->
+      case user.pokemon.status of
+        Nothing -> pure ()
+        Just s  -> do
+          unless (targ `isImmuneToStatus'` s) do
+          unless (isNothing targ.pokemon.status) do
+          putUserStatus   env Nothing
+          putTargetStatus env user.pokemon.status
+
+    FilletAway                     -> error "FilletAway"
+    Drain _                        -> error "Drain"
+    DrainSleeping _                -> error "DrainSleeping"
+    PainSplit                      -> error "PainSplit" -- TODO: Lazy
+    Switch {}                      -> error "Switch"
+    Camouflage                     -> error "Camouflage"
+    Recharge                       -> error "Recharge"
+    Precharge                      -> error "Precharge"
+    CopyAbility Target2Allies      -> error "CopyAbility Target2Allies"
+    AddBoostIfKO _                 -> error "AddBoostIfKO"
+    Locked                         -> error "TODO: Locking moves"
+    CutPwrUserHP                   -> error "CutPwrUserHP"
+    RaisePwrUserHP                 -> error "RaisePwrUserHP"
+    AddPwr                         -> error "AddPwr"
+    UseDef                         -> error "UseDef"
+    DoublePwrNoItem                -> error "DoublePwrNoItem"
+    DoublePwrIfHit                 -> error "DoublePwrIfHit"
+    DoublePwrIfTargetFaster        -> error "DoublePwrIfTargetFaster"
+    DoublePwrIfTargetSlower        -> error "DoublePwrIfTargetSlower"
+    DoubleDmgIfTargetStatus        -> error "DoubleDmgIfTargetStatus"
+    DoublePwrIfUserStatus          -> error "DoublePwrIfUserStatus"
+    DoubleDmgIfDynamax             -> error "DoubleDmgIfDynamax"
+    DoublePwrIfTargetHalfHP        -> error "DoublePwrIfTargetHalfHP"
+    CrushGrip                      -> error "CrushGrip"
+    DoublePowerIfInvul _           -> error "DoublePowerIfInvul"
+    PwrLowFriendship               -> error "PwrLowFriendship"
+    PwrHighFriendship              -> error "PwrHighFriendship"
+    PwrHeavyTarget                 -> error "PwrHeavyTarget"
+    PwrHeavyUser                   -> error "PwrHeavyUser"
+    PwrInHarshSunlight             -> error "PwrInHarshSunlight"
+    EchoPower                      -> error "EchoPower"
+    SpeedPower                     -> error "SpeedPower"
+    Recoil _                       -> error "Recoil"
+    Don'tKill                      -> error "Don'tKill"
+    FinalGambit                    -> error "FinalGambit"
+    BeakBlast                      -> error "BeakBlast"
+    ShieldTrap                     -> error "ShieldTrap"
+    Wish                           -> error "Wish"
+    Delay2Turns                    -> error "Delay2Turns"
+    UserPrimary                    -> error "UserPrimary"
+    ExtraType _                    -> error "ExtraType"
+    Instruct                       -> error "Instruct"
+    AllySwap                       -> error "AllySwap"
+    Encore                         -> error "Encore"
+    Disable                        -> error "Disable"
+    Metronome                      -> error "Metronome"
+    Assist                         -> error "Assist"
+    AfterYou                       -> error "AfterYou"
+    MorpekoMode                    -> error "MorpekoMode"
+    Autotomize                     -> error "Autotomize"
+    AxeKick                        -> error "AxeKick"
+    BaddyBad                       -> error "BaddyBad"
+    BeatUp                         -> error "BeatUp"
+    Belch                          -> error "Belch"
+    Bestow                         -> error "Bestow"
+    BodyPress                      -> error "BodyPress"
+    EatBerry _                     -> error "EatBerry"
+    ChillyReception                -> error "ChillyReception"
+    BoostSuperEffective            -> error "BoostSuperEffective"
+    Comeuppance                    -> error "Comeuppance"
+    Conversion                     -> error "Conversion"
+    Conversion2                    -> error "Conversion2"
+    Copycat                        -> error "Copycat"
+    CoreEnforcer                   -> error "CoreEnforcer"
+    CraftyShield                   -> error "CraftyShield"
+    Defog                          -> error "Defog"
+    RemovePP _                     -> error "RemovePP"
+    ExpandingForce                 -> error "ExpandingForce"
+    NoFleeingNextTurn              -> error "NoFleeingNextTurn"
+    FirePledge                     -> error "FirePledge"
+    WaterPledge                    -> error "WaterPledge"
+    GrassPledge                    -> error "GrassPledge"
+    Bide                           -> error "Bide"
+    MirrorCoat                     -> error "MirrorCoat"
+    Counter                        -> error "Counter"
+    DamageWithSplinters            -> error "DamageWithSplinters"
+    DieHealSwitchIn                -> error "DieHealSwitchIn"
+    SplashDamage                   -> error "SplashDamage"
+    Fling                          -> error "Fling"
+    FloralHealing                  -> error "FloralHealing"
+    FloralShield                   -> error "FloralShield"
+    FlinchIfHit                    -> error "FlinchIfHit"
+    FollowMe                       -> error "FollowMe"
+    Foresight                      -> error "Foresight"
+    UseTargetAtt                   -> error "UseTargetAtt"
+    SuperEffectiveAgainst _        -> error "SuperEffectiveAgainst _"
+    FusionBolt                     -> error "FusionBolt"
+    FusionFlare                    -> error "FusionFlare"
+    GearUp                         -> error "GearUp"
+    MagneticFlux                   -> error "MagneticFlux"
+    NoSpam                         -> error "NoSpam"
+    GlaiveRush                     -> error "GlaiveRush"
+    GlitzyGlow                     -> error "GlitzyGlow"
+    GrassyGlide                    -> error "GrassyGlide"
+    Grudge                         -> error "Grudge"
+    GyroBall                       -> error "GyroBall"
+    HappyHour                      -> error "HappyHour"
+    HelpingHand                    -> error "HelpingHand"
+    HiddenPower                    -> error "HiddenPower"
+    DamageUserIfMiss _             -> error "DamageUserIfMiss"
+    Scaling5Turns                  -> error "Scaling5Turns"
+    DoubleDmgIfDefenceCurlUsed     -> error "DoubleDmgIfDefenceCurlUsed"
+    Imprison                       -> error "Imprison"
+    RemoveBerry _                  -> error "RemoveBerry"
+    IonDeluge                      -> error "IonDeluge"
+    NoSwitchUserAndTarget          -> error "NoSwitchUserAndTarget"
+    Judgment                       -> error "Judgement"
+    JungleHealing                  -> error "JungleHealing"
+    DoublePwrIfUserDebuff          -> error "DoublePwrIfUserDebuff"
+    AllOtherMovesUsed              -> error "AllOtherMovesUsed"
+    LastRespects                   -> error "LastRespects"
+    LightThatBurnsTheSky           -> error "LightThatBurnsTheSky"
+    Magnitude                      -> error "Magnitude"
+    MeFirst                        -> error "MeFirst"
+    MatchTarget'sDamage _          -> error "MatchTarget'sDamage"
+    Mimic                          -> error "Mimic"
+    MirrorMove                     -> error "MirrorMove"
+    PwrInTerrain _                 -> error "PwrInTerrain"
+    RecoverWeather                 -> error "RecoverWeather"
+    MultiAttack                    -> error "MultiAttack"
+    NaturalGift                    -> error "NaturalGift"
+    NaturePower                    -> error "NaturePower"
+    Uproar                         -> error "Uproar"
+    CopyType                       -> error "CopyType"
+    SwapOffDef                     -> error "SwapOffDef"
+    SwpSpe                         -> error "SwpSpe"
+    DoublePwrIfTargetPoison        -> error "DoublePwrIfTargetPoison"
+    IfUserHitByContactMove _       -> error "IfUserHitByContactMove"
+    SwapItem                       -> error "SwapItem"
+    DoublePwrInTerrain _           -> error "DoublePwrInTerrain"
+    Octolock                       -> error "Octolock"
+    OdorSleuth                     -> error "OdorSleuth"
+    PayDay                         -> error "PayDay"
+    DoublePwrIfUserAttacked        -> error "DoublePwrIfUserAttacked"
+    UseHighestOfAttSpA             -> error "UseHighestOfAttSpA"
+    PwrHighBond                    -> error "PwrHighBond"
+    PollenPuff                     -> error "PollenPuff"
+    Poltergeist                    -> error "Poltergeist"
+    Powder                         -> error "Powder"
+    Present                        -> error "Present"
+    Psywave                        -> error "Psywave"
+    Punishment                     -> error "Punishment"
+    Purify                         -> error "Purify"
+    Pursuit                        -> error "Pursuit"
+    QuickGuard                     -> error "QuickGuard"
+    Rage                           -> error "Rage"
+    RageFist                       -> error "RageFist"
+    RagingBull                     -> error "RagingBull"
+    RagingFury                     -> error "RagingFury"
+    Recycle                        -> error "Recycle"
+    Refresh                        -> error "Refresh"
+    SleepFor2Turns                 -> error "SleepFor2Turns"
     DoubleDmgIfAllyFaintedLastTurn -> error "DoubleDmgIfAllyFaintedLastTurn"
-    ReviveAllyToHalfHP -> error "ReviveAllyToHalfHP"
-    GroundFor1Turn -> error "GroundFor1Turn"
-    Rototiller -> error "Rototiller"
-    Round -> error "Round"
-    SaltCure -> error "SaltCure"
-    SecretPower -> error "SecretPower"
-    ShedTail -> error "ShedTail"
-    ShellSideArm -> error "ShellSideArm"
-    ShellTrap -> error "ShellTrap"
-    ShoreUp -> error "ShoreUp"
-    Sketch -> error "Sketch"
-    SkyDrop -> error "SkyDrop"
-    HitInvul _ -> error "HitInvul"
-    SleepTalk -> error "SleepTalk"
-    GroundFlying -> error "GroundFlying"
-    SmellingSalts -> error "SmellingSalts"
-    IgnoreFollowMe -> error "IgnoreFollowMe"
-    FailIfNotAsleep -> error "FailIfNotAsleep"
-    Snowscape -> error "Snowscape"
-    ChargeIfNotSun -> error "ChargeIfNotSun"
-    HealBurn -> error "HealBurn"
-    StealStatBoosts -> error "StealStatBoosts"
-    SpitUp -> error "SpitUp"
-    Swallow -> error "Swallow"
-    Stockpile -> error "Stockpile"
-    Spite -> error "Spite"
-    SpringtideStorm -> error "SpringtideStorm"
-    DoublePwrIfLastMoveFailed -> error "DoublePwrIfLastMoveFailed"
-    StrengthSap -> error "StrengthSap"
-    SuckerPunch -> error "SuckerPunch"
-    Synchronoise -> error "Synchronoise"
-    TarShot -> putTarget targ { tarShot=True }
-    TechnoBlast -> error "TechnoBlast"
-    Telekinesis -> putTarget targ {telekinesis=3}
-    TeraBlast -> error "TeraBlast"
-    TerrainPulse -> error "TerrainPulse"
-    TroatChop -> error "TroatChop"
-    PerfectAccuracyInWeather _ -> error "PerfectAccuracyInWeather"
-    RemoveSubstitute -> error "RemoveSubstitute"
-    TripleAxel -> error "TripleAxel"
-    TripleKick -> error "TripleKick"
-    TrumpCard -> error "TrumpCard"
-    Transform -> error "Transform"
-    Torment -> error "Torment"
-    VenomDrench -> error "VenomDrench"
-    WakeUpSlap -> error "WakeUpSlap"
-    WaterSport -> editField \f -> f { waterSport=5 }
-    WeatherBall -> error "WeatherBall"
-    WringOut -> error "WringOut"
-    Feint -> error "Feint"
+    ReviveAllyToHalfHP             -> error "ReviveAllyToHalfHP"
+    GroundFor1Turn                 -> error "GroundFor1Turn"
+    Rototiller                     -> error "Rototiller"
+    Round                          -> error "Round"
+    SaltCure                       -> error "SaltCure"
+    SecretPower                    -> error "SecretPower"
+    ShedTail                       -> error "ShedTail"
+    ShellSideArm                   -> error "ShellSideArm"
+    ShellTrap                      -> error "ShellTrap"
+    ShoreUp                        -> error "ShoreUp"
+    Sketch                         -> error "Sketch"
+    SkyDrop                        -> error "SkyDrop"
+    HitInvul _                     -> error "HitInvul"
+    SleepTalk                      -> error "SleepTalk"
+    GroundFlying                   -> error "GroundFlying"
+    SmellingSalts                  -> error "SmellingSalts"
+    IgnoreFollowMe                 -> error "IgnoreFollowMe"
+    FailIfNotAsleep                -> error "FailIfNotAsleep"
+    Snowscape                      -> error "Snowscape"
+    ChargeIfNotSun                 -> error "ChargeIfNotSun"
+    HealBurn                       -> error "HealBurn"
+    StealStatBoosts                -> error "StealStatBoosts"
+    Spite                          -> error "Spite"
+    SpringtideStorm                -> error "SpringtideStorm"
+    DoublePwrIfLastMoveFailed      -> error "DoublePwrIfLastMoveFailed"
+    StrengthSap                    -> error "StrengthSap"
+    SuckerPunch                    -> error "SuckerPunch"
+    Synchronoise                   -> error "Synchronoise"
+    TechnoBlast                    -> error "TechnoBlast"
+    TeraBlast                      -> error "TeraBlast"
+    TerrainPulse                   -> error "TerrainPulse"
+    TroatChop                      -> error "TroatChop"
+    PerfectAccuracyInWeather _     -> error "PerfectAccuracyInWeather"
+    RemoveSubstitute               -> error "RemoveSubstitute"
+    TripleAxel                     -> error "TripleAxel"
+    TripleKick                     -> error "TripleKick"
+    TrumpCard                      -> error "TrumpCard"
+    Transform                      -> error "Transform"
+    VenomDrench                    -> error "VenomDrench"
+    WakeUpSlap                     -> error "WakeUpSlap"
+    WeatherBall                    -> error "WeatherBall"
+    WringOut                       -> error "WringOut"
+    Feint                          -> error "Feint"
+
+    Stockpile -> putTarget targ { stockpiles = min 3 $ succ targ.stockpiles }
+    SpitUp    -> error "SpitUp"
+    Swallow   -> error "Swallow"
+
+    Torment         -> putTarget targ { torment     = True }
+    Quash           -> putTarget targ { quashed     = True }
+    TarShot         -> putTarget targ { tarShot     = True }
+    Endure          -> putTarget targ { enduring    = True }
+    LockOn          -> putTarget targ { lockedOn    = True }
+    MagicCoat       -> putTarget targ { magicCoat   = True }
+    Charge          -> putTarget targ { charged     = True }
+    AquaRing        -> putTarget targ { aquaRing    = True }
+    Ingrain         -> putTarget targ { ingrained   = True }
+    Mist            -> putTarget targ { mist        = True }
+    LaserFocus      -> putTarget targ { focused     = True }
+    DefenceCurlUsed -> putTarget targ { defenceCurl = True }
+    Snatch          -> putTarget targ { snatching   = True }
+    MagnetRise      -> putTarget targ { magnetRise  = 5 }
+    Telekinesis     -> putTarget targ { telekinesis = 3 }
+    DestinyBond     -> putTarget targ { destinyBond = 1 }
+    HealBlock       -> putTarget targ { healBlock   = 5 }
+    Taunt           -> putTarget targ { taunt       = 3 } -- four turns if target acted before the user
+    Embargo         -> putTarget targ { embargo     = 3 }
+    Safeguard       -> editLane2 \l -> l { safeguard  = 3 }
+    Tailwind        -> editLane2 \l -> l { tailwind   = 3 }
+    WaterSport      -> editField \f -> f { waterSport = 5 }
+    MudSport        -> editField \l -> l { mudSport   = 5 }
+    ClearTerrain    -> editField \f -> f { terrain    = Nothing }
+
+    UserDies  -> putUser user { pokemon = user.pokemon { hp = 0 } }
 
 ----
 
@@ -691,6 +657,10 @@ editParty1 f =
 editParty2 f =
   modify \b -> b { party2 = f b.party2 }
 
+putUserStatus MoveEnv {..} s = do
+  user <- getUser
+  putUser user { pokemon = user.pokemon { status = s } }
+
 putTargetStatus MoveEnv {..} s = do
   targ <- getTarget
   putTarget targ { pokemon = targ.pokemon { status = s } }
@@ -704,4 +674,21 @@ protectTarget MoveEnv {..} = do
     { protected   = True
     , protections = succ targ.protections
     }
+
+-- TODO: Insomnia
+isImmuneToStatus pok = \case
+  Move.Paralysis -> ELE `elem` pok.pokemon.types
+  Move.Burn      -> FIR `elem` pok.pokemon.types
+  Move.Freeze    -> ICE `elem` pok.pokemon.types
+  Move.Poison    -> POI `elem` pok.pokemon.types
+  Move.Toxic     -> POI `elem` pok.pokemon.types
+  _              -> False
+
+isImmuneToStatus' pok = \case
+  Pok.Paralysis -> ELE `elem` pok.pokemon.types
+  Pok.Burn      -> FIR `elem` pok.pokemon.types
+  Pok.Freeze    -> ICE `elem` pok.pokemon.types
+  Pok.Poison    -> POI `elem` pok.pokemon.types
+  Pok.Toxic _   -> POI `elem` pok.pokemon.types
+  _             -> False
 
