@@ -10,6 +10,7 @@ import Data.List qualified as L
 import Prelude   hiding (Category)
 
 type Ability = Int
+type FLAGS   = Word16
 
 simpleID = -1
 insomniaID = -1
@@ -29,7 +30,7 @@ data Move = Move
    , crit    :: Word8  -- 1="high crit chance", alwaysCrit="always crits"
    , hits    :: (Word8,Word8)  -- Number of times to perform the move, between 2 and N (N if N<2)
    , pri     :: Int8   -- Priority bracket. In each bracket, faster pokemon attack first (unless trick room)
-   , flags   :: Word16
+   , flags   :: FLAGS
    , targ    :: Target -- The target(s) of the move
    , eff     :: Effect -- additional effects if the move is successful
    }
@@ -53,21 +54,22 @@ pattern WIDE     = 0b0000001 :: Target -- hit all targets if set, otherwise choo
 
 -- Fields
 --
-pattern DANCE   = 0b1               -- dance moves are copied by pokemon with dancer
-pattern SOUND   = 0b10              -- sound-based moves ignore substitues, but pokemon with soundproof are immune
-pattern BULLET  = 0b100             -- pokemon with bulletproof are immune
-pattern POWDER  = 0b1000            -- pokemon holding safety googles are immune
-pattern CONTACT = 0b10000           -- if a move makes contact it may trigger additional effects
-pattern ZMOVE   = 0b100000          -- z-moves can hit through protect at reduced damage
-pattern TURN1   = 0b1000000         -- wether the move can only be used on the first turn
-pattern IGNSUB  = 0b10000000        -- move can hit through substitute
-pattern PULSE   = 0b100000000       -- aura and pulse based move (boosted by Mega Launcher)
-pattern BITE    = 0b1000000000      -- bite based move (boosted by Strong Jaw)
-pattern EXPLODE = 0b10000000000     -- explosive moves cannot be used with Damp present
-pattern PUNCH   = 0b100000000000    -- punching moves (iron fist, punching glove)
-pattern SLICE   = 0b1000000000000   -- slicing moves (sharpness)
-pattern WIND    = 0b10000000000000  -- wind moves (wind power, wind rider)
-pattern SNATCH  = 0b100000000000000 -- move can be stolen by snatch
+pattern DANCE   = 0b1                :: FLAGS -- dance moves are copied by pokemon with dancer
+pattern SOUND   = 0b10               :: FLAGS -- sound-based moves ignore substitues, but pokemon with soundproof are immune
+pattern BULLET  = 0b100              :: FLAGS -- pokemon with bulletproof are immune
+pattern POWDER  = 0b1000             :: FLAGS -- pokemon holding safety googles are immune
+pattern CONTACT = 0b10000            :: FLAGS -- if a move makes contact it may trigger additional effects
+pattern ZMOVE   = 0b100000           :: FLAGS -- z-moves can hit through protect at reduced damage
+pattern TURN1   = 0b1000000          :: FLAGS -- wether the move can only be used on the first turn
+pattern IGNSUB  = 0b10000000         :: FLAGS -- move can hit through substitute
+pattern PULSE   = 0b100000000        :: FLAGS -- aura and pulse based move (boosted by Mega Launcher)
+pattern BITE    = 0b1000000000       :: FLAGS -- bite based move (boosted by Strong Jaw)
+pattern EXPLODE = 0b10000000000      :: FLAGS -- explosive moves cannot be used with Damp present
+pattern PUNCH   = 0b100000000000     :: FLAGS -- punching moves (iron fist, punching glove)
+pattern SLICE   = 0b1000000000000    :: FLAGS -- slicing moves (sharpness)
+pattern WIND    = 0b10000000000000   :: FLAGS -- wind moves (wind power, wind rider)
+pattern SNATCH  = 0b100000000000000  :: FLAGS -- move can be stolen by snatch
+pattern MCOAT   = 0b1000000000000000 :: FLAGS -- move is affected by magic coat/magic bounce
 
 -- Edit: Sound-based moves DOES NOT hit through substitute. It just so happens that
 -- every sound-based move except for howl do
@@ -636,7 +638,7 @@ moves =
   , MoveDesc "Attack Order" 15 tackle
       {ty=BUG, pow=90, crit=1}
   , MoveDesc "Attract" 15 celebrate
-      {ty=NOR, targ=ADJACENT, eff=Attract, flags=IGNSUB}
+      {ty=NOR, targ=ADJACENT, eff=Attract, flags=IGNSUB .|. MCOAT}
   , MoveDesc "Aura Sphere" 20 tackle
       {ty=FIG, cat=Special, acc=neverMiss, pow=80, flags=PULSE .|. BULLET}
   , MoveDesc "Aura Wheel" 10 tackle
@@ -653,7 +655,7 @@ moves =
       {ty=FIG, pow=120, eff=90 :% AxeKick, flags=CONTACT}
 
   , MoveDesc "Baby-Doll Eyes" 30 celebrate
-      {ty=FAI, pri=1, eff=AddBoost False zero {att= -1}}
+      {ty=FAI, pri=1, eff=AddBoost False zero {att= -1}, flags=MCOAT}
   , MoveDesc "Baddy Bad" 15 tackle
       {ty=DAR, cat=Special, pow=80, eff=BaddyBad, acc=neverMiss}
   , MoveDesc "Baneful Bunker" 10 celebrate
@@ -702,7 +704,7 @@ moves =
   , MoveDesc "Blizzard" 5 tackle
       {ty=ICE, pow=110, cat=Special, acc=70, eff=10 :% EStatus Freeze :+ PerfectAccuracyInWeather Hail, flags=WIND}
   , MoveDesc "Block" 5 celebrate
-      {ty=NOR, targ=ADJACENT, eff=NoSwitch, acc=neverMiss}
+      {ty=NOR, targ=ADJACENT, eff=NoSwitch, acc=neverMiss, flags=MCOAT}
   -- bloom doom
   , MoveDesc "Blue Flare" 5 tackle
       {ty=FIR, pow=130, cat=Special, acc=85, eff=20 :% EStatus Burn}
@@ -767,7 +769,7 @@ moves =
   , MoveDesc "Camouflage" 20 celebrate
       {ty=NOR, eff=Camouflage, flags=SNATCH}
   , MoveDesc "Captivate" 20 celebrate
-      {ty=NOR, acc=100, targ=ADJACENT, eff=Captivate}
+      {ty=NOR, acc=100, targ=ADJACENT, eff=Captivate, flags=MCOAT}
   , MoveDesc "Catastropika" 1 tackle
       {ty=ELE, pow=210, flags=CONTACT .|. ZMOVE}
   , MoveDesc "Ceaseless Edge" 15 tackle
@@ -778,7 +780,7 @@ moves =
   , MoveDesc "Charge Beam" 10 tackle
       {ty=ELE, pow=50, cat=Special, acc=90, eff=70 :% AddBoost True zero {spA=1}}
   , MoveDesc "Charm" 20 celebrate
-      {ty=FAI, targ=ADJACENT, eff=AddBoost False zero {att= -2}}
+      {ty=FAI, targ=ADJACENT, eff=AddBoost False zero {att= -2}, flags=MCOAT}
   , MoveDesc "Chatter" 20 tackle
       {ty=FLY, pow=65, cat=Special, acc=100, eff=Confuse, flags=SOUND .|. IGNSUB}
   , MoveDesc "Chilling Water" 20 tackle
@@ -816,9 +818,9 @@ moves =
   , MoveDesc "Comeuppance" 10 tackle
       {ty=DAR, pow=1, eff=Comeuppance, flags=CONTACT}
   , MoveDesc "Confide" 20 celebrate
-      {ty=NOR, targ=ADJACENT, eff=AddBoost False zero {spA= -1}, flags=SOUND .|. IGNSUB, acc=neverMiss}
+      {ty=NOR, targ=ADJACENT, eff=AddBoost False zero {spA= -1}, flags=SOUND .|. IGNSUB .|. MCOAT, acc=neverMiss}
   , MoveDesc "Confuse Ray" 10 celebrate
-      {ty=GHO, targ=ADJACENT, eff=Confuse}
+      {ty=GHO, targ=ADJACENT, eff=Confuse, flags=MCOAT}
   , MoveDesc "Confusion" 25 tackle
       {ty=PSY, pow=50, cat=Special, eff=10 :% Confuse}
   , MoveDesc "Constrict" 35 tackle
@@ -834,13 +836,13 @@ moves =
       {ty=DRA, cat=Special, pow=100, eff=CoreEnforcer}
   -- corkscrew crash
   , MoveDesc "Corrosive Gas" 40 celebrate
-      {ty=POI, targ=ADJACENT, eff=RemoveItem}
+      {ty=POI, targ=ADJACENT, eff=RemoveItem, flags=MCOAT}
   , MoveDesc "Cosmic Power" 20 celebrate
       {ty=PSY, eff=AddBoost True zero {def=1, spD=1}, flags=SNATCH}
   , MoveDesc "Cotton Guard" 10 celebrate
       {ty=GRA, eff=AddBoost True zero {def=3}, flags=SNATCH}
   , MoveDesc "Cotton Spore" 40 celebrate
-      {ty=GRA, targ=ADJACENT, eff=AddBoost False zero {spe= -2}, flags=POWDER}
+      {ty=GRA, targ=ADJACENT, eff=AddBoost False zero {spe= -2}, flags=POWDER .|. MCOAT}
   , MoveDesc "Counter" 20 celebrate
       {ty=FIG, cat=Physical, eff=Counter, flags=CONTACT, pri= -5}
   , MoveDesc "Court Change" 10 celebrate
@@ -869,7 +871,7 @@ moves =
   , MoveDesc "Dark Pulse" 15 tackle
       {ty=DAR, pow=80, cat=Special, eff=20 :% Flinch, flags=PULSE}
   , MoveDesc "Dark Void" 10 celebrate
-      {ty=DAR, targ=ADJFOES .|. WIDE, eff=EStatus Sleep}
+      {ty=DAR, targ=ADJFOES .|. WIDE, eff=EStatus Sleep, flags=MCOAT}
   , MoveDesc "Darkest Lariat" 10 tackle
       {ty=DAR, pow=85, eff=IgnoreBoosts, flags=CONTACT}
   , MoveDesc "Dazzling Gleam" 10 tackle
@@ -881,7 +883,7 @@ moves =
   , MoveDesc "Defense Curl" 40 celebrate -- TODO: Typo
       {ty=NOR, eff=AddBoost True zero {def=1} :+ DefenceCurlUsed, flags=SNATCH}
   , MoveDesc "Defog" 15 celebrate
-      {ty=FLY, targ=ADJACENT, eff=Defog, acc=neverMiss}
+      {ty=FLY, targ=ADJACENT, eff=Defog, acc=neverMiss, flags=MCOAT}
   , MoveDesc "Destiny Bond" 5 celebrate
       {ty=GHO, eff=DestinyBond}
   , MoveDesc "Detect" 5 celebrate
@@ -894,7 +896,7 @@ moves =
   , MoveDesc "Dire Claw" 15 tackle
       {ty=POI, pow=80, crit=1, flags=CONTACT, eff=50 :% Choose [EStatus Poison, EStatus Paralysis, Yawn]}
   , MoveDesc "Disable" 20 celebrate
-      {ty=NOR, targ=ADJACENT, eff=Disable, flags=IGNSUB}
+      {ty=NOR, targ=ADJACENT, eff=Disable, flags=IGNSUB .|. MCOAT}
   , MoveDesc "Disarming Voice" 15 tackle
       {ty=FAI, cat=Special, acc=neverMiss, pow=40, flags=SOUND .|. IGNSUB}
   , MoveDesc "Discharge" 15 tackle
@@ -973,7 +975,7 @@ moves =
   , MoveDesc "Echoed Voice" 15 tackle
       {ty=NOR, cat=Special, pow=40, eff=EchoPower, flags=SOUND .|. IGNSUB}
   , MoveDesc "Eerie Impulse" 15 celebrate
-      {ty=ELE, targ=ADJACENT, eff=AddBoost False zero {spA= -2}}
+      {ty=ELE, targ=ADJACENT, eff=AddBoost False zero {spA= -2}, flags=MCOAT}
   , MoveDesc "Eerie Spell" 5 tackle
       {ty=PSY, cat=Special, pow=80, eff=RemovePP 3, flags=SOUND .|. IGNSUB}
   , MoveDesc "Egg Bomb" 10 tackle
@@ -989,11 +991,11 @@ moves =
   , MoveDesc "Electroweb" 15 tackle
       {ty=ELE, cat=Special, pow=55, acc=95, eff=AddBoost False zero {spe= -1}, targ=ADJFOES .|. WIDE}
   , MoveDesc "Embargo" 15 celebrate
-      {ty=DAR, targ=ADJACENT, eff=Embargo}
+      {ty=DAR, targ=ADJACENT, eff=Embargo, flags=MCOAT}
   , MoveDesc "Ember" 25 tackle
       {ty=FIR, cat=Special, eff=10 :% EStatus Burn}
   , MoveDesc "Encore" 5 celebrate
-      {ty=NOR, targ=ADJACENT, eff=Encore, flags=IGNSUB}
+      {ty=NOR, targ=ADJACENT, eff=Encore, flags=IGNSUB .|. MCOAT}
   , MoveDesc "Endeavor" 5 tackle
       {ty=NOR, pow=0, eff=MatchUserHP, flags=CONTACT}
   , MoveDesc "Endure" 10 celebrate
@@ -1001,7 +1003,7 @@ moves =
   , MoveDesc "Energy Ball" 10 tackle
       {ty=GRA, cat=Special, pow=90, eff=10 :% AddBoost False zero {spD= -1}, flags=BULLET}
   , MoveDesc "Entrainment" 15 celebrate
-      {ty=NOR, eff=CopyAbility User2Target}
+      {ty=NOR, eff=CopyAbility User2Target, flags=MCOAT}
   , MoveDesc "Eruption" 5 tackle
       {ty=FIR, cat=Special, targ=ADJFOES .|. WIDE, eff=CutPwrUserHP, pow=150}
   , MoveDesc "Esper Wing" 10 tackle
@@ -1027,13 +1029,13 @@ moves =
   , MoveDesc "Fake Out" 10 tackle
       {ty=NOR, pow=40, pri=3, eff=Flinch, flags=CONTACT .|. TURN1}
   , MoveDesc "Fake Tears" 20 celebrate
-      {ty=DAR, targ=ADJACENT, eff=AddBoost False zero {spD= -2}}
+      {ty=DAR, targ=ADJACENT, eff=AddBoost False zero {spD= -2}, flags=MCOAT}
   , MoveDesc "False Surrender" 10 tackle
       {ty=DAR, pow=80, acc=neverMiss, flags=CONTACT}
   , MoveDesc "False Swipe" 40 tackle
       {ty=NOR, pow=40, eff=Don'tKill, flags=CONTACT}
   , MoveDesc "Feather Dance" 15 celebrate
-      {ty=FLY, targ=ADJACENT, flags=DANCE, eff=AddBoost False zero {att= -2}}
+      {ty=FLY, targ=ADJACENT, flags=DANCE .|. MCOAT, eff=AddBoost False zero {att= -2}}
   , MoveDesc "Feint" 10 tackle
       {ty=NOR, pow=30, eff=Feint, pri=2}
   , MoveDesc "Feint Attack" 20 tackle
@@ -1079,11 +1081,11 @@ moves =
   , MoveDesc "Flare Blitz" 15 tackle
       {ty=FIR, pow=120, eff=Recoil (1/3) :+ 10 :% EStatus Burn, flags=CONTACT}
   , MoveDesc "Flash" 20 celebrate
-      {ty=NOR, targ=ADJACENT, eff=AddBoost False zero {att=0, acc= -1}}
+      {ty=NOR, targ=ADJACENT, eff=AddBoost False zero {att=0, acc= -1}, flags=MCOAT}
   , MoveDesc "Flash Cannon" 10 tackle
       {ty=STE, pow=80, cat=Special, eff=10 :% AddBoost False zero {spD= -1}}
   , MoveDesc "Flatter" 15 celebrate
-      {ty=DAR, targ=ADJACENT, eff=Confuse :+ AddBoost False zero {spA=1}}
+      {ty=DAR, targ=ADJACENT, eff=Confuse :+ AddBoost False zero {spA=1}, flags=MCOAT}
   , MoveDesc "Fleur Cannon" 5 tackle
       {ty=FAI, pow=130, cat=Special, acc=90, eff=AddBoost True zero {spA= -2}}
   , MoveDesc "Fling" 10 tackle
@@ -1093,7 +1095,7 @@ moves =
   , MoveDesc "Floaty Fall" 15 tackle
       {ty=FLY, pow=90, acc=95, eff=30 :% Flinch, flags=CONTACT}
   , MoveDesc "Floral Healing" 10 celebrate
-      {ty=FAI, targ=ADJACENT, eff=FloralHealing, acc=neverMiss}
+      {ty=FAI, targ=ADJACENT, eff=FloralHealing, acc=neverMiss, flags=MCOAT}
   , MoveDesc "Flower Shield" 10 celebrate
       {ty=FAI, targ=ALL .|. WIDE, eff=FloralShield}
   , MoveDesc "Flower Trick" 10 tackle
@@ -1113,9 +1115,9 @@ moves =
   , MoveDesc "Force Palm" 10 tackle
       {ty=FIG, pow=60, eff=30 :% EStatus Paralysis, flags=CONTACT}
   , MoveDesc "Foresight" 40 celebrate
-      {ty=NOR, targ=ADJACENT, eff=Foresight, flags=IGNSUB, acc=neverMiss}
+      {ty=NOR, targ=ADJACENT, eff=Foresight, flags=IGNSUB .|. MCOAT, acc=neverMiss}
   , MoveDesc "Forest's Curse" 20 celebrate
-      {ty=GRA, targ=ADJACENT, eff=AddType GRA}
+      {ty=GRA, targ=ADJACENT, eff=AddType GRA, flags=MCOAT}
   , MoveDesc "Foul Play" 15 tackle
       {ty=DAR, pow=95, eff=UseTargetAtt, flags=CONTACT}
   , MoveDesc "Freeze Shock" 5 tackle
@@ -1148,7 +1150,7 @@ moves =
   -- G-Max moves ...
 
   , MoveDesc "Gastro Acid" 10 celebrate
-      {ty=POI, targ=ADJACENT, eff=SuppressAbility}
+      {ty=POI, targ=ADJACENT, eff=SuppressAbility, flags=MCOAT}
   , MoveDesc "Gear Grind" 15 tackle
       {ty=STE, pow=50, hits=(2,2), acc=85, flags=CONTACT}
   , MoveDesc "Gear Up" 20 celebrate
@@ -1171,7 +1173,7 @@ moves =
   , MoveDesc "Glaive Rush" 5 tackle
       {ty=DRA, pow=120, eff=GlaiveRush, flags=CONTACT}
   , MoveDesc "Glare" 30 celebrate
-      {ty=NOR, targ=ADJACENT, eff=EStatus Paralysis}
+      {ty=NOR, targ=ADJACENT, eff=EStatus Paralysis, flags=MCOAT}
   , MoveDesc "Glitzy Glow" 15 tackle
       {ty=PSY, cat=Special, pow=80, eff=GlitzyGlow, acc=neverMiss}
   , MoveDesc "Grass Knot" 20 tackle
@@ -1179,7 +1181,7 @@ moves =
   , MoveDesc "Grass Pledge" 10 tackle
       {ty=GRA, pow=80, cat=Special, eff=GrassPledge}
   , MoveDesc "Grass Whistle" 15 celebrate
-      {ty=GRA, targ=ADJACENT, eff=EStatus Sleep, acc=55, flags=SOUND .|. IGNSUB}
+      {ty=GRA, targ=ADJACENT, eff=EStatus Sleep, acc=55, flags=SOUND .|. IGNSUB .|. MCOAT}
   , MoveDesc "Grassy Glide" 20 tackle
       {ty=GRA, pow=70, eff=GrassyGlide, flags=CONTACT}
   , MoveDesc "Grassy Terrain" 10 celebrate
@@ -1189,7 +1191,7 @@ moves =
   , MoveDesc "Gravity" 5 celebrate
       {ty=PSY, eff=Gravity}
   , MoveDesc "Growl" 40 celebrate
-      {ty=NOR, targ=ADJACENT, eff=AddBoost False zero {att= -1}, flags=SOUND .|. IGNSUB}
+      {ty=NOR, targ=ADJACENT, eff=AddBoost False zero {att= -1}, flags=SOUND .|. IGNSUB .|. MCOAT}
   , MoveDesc "Growth" 20 celebrate
       {ty=NOR, eff=AddBoost True zero {att=1, spA=1}, flags=SNATCH}
   , MoveDesc "Grudge" 5 celebrate
@@ -1229,11 +1231,11 @@ moves =
   , MoveDesc "Heal Bell" 5 celebrate
       {ty=NOR, eff=ClearStatusParty, flags=SOUND .|. IGNSUB .|. SNATCH}
   , MoveDesc "Heal Block" 15 celebrate
-      {ty=PSY, targ=ADJACENT, eff=HealBlock}
+      {ty=PSY, targ=ADJACENT, eff=HealBlock, flags=MCOAT}
   , MoveDesc "Heal Order" 10 celebrate
       {ty=BUG, eff=Recover 0.5, flags=SNATCH}
   , MoveDesc "Heal Pulse" 10 celebrate
-      {ty=PSY, targ=ADJACENT, eff=Recover 0.5, flags=PULSE, acc=neverMiss}
+      {ty=PSY, targ=ADJACENT, eff=Recover 0.5, flags=PULSE .|. MCOAT, acc=neverMiss}
   , MoveDesc "Healing Wish" 10 celebrate
       {ty=PSY, eff=DieHealSwitchIn, flags=SNATCH}
   , MoveDesc "Heart Stamp" 25 tackle
@@ -1296,7 +1298,7 @@ moves =
   , MoveDesc "Hyperspace Hole" 5 tackle
       {ty=PSY, cat=Special, acc=neverMiss, pow=80, eff=IgnoreProtect, flags=IGNSUB}
   , MoveDesc "Hypnosis" 20 celebrate
-      {ty=PSY, acc=60, eff=EStatus Sleep, targ=ADJACENT}
+      {ty=PSY, acc=60, eff=EStatus Sleep, targ=ADJACENT, flags=MCOAT}
 
   , MoveDesc "Ice Ball" 20 tackle
       {ty=ICE, pow=30, acc=90, eff=Scaling5Turns, flags=CONTACT .|. BULLET}
@@ -1358,7 +1360,7 @@ moves =
   , MoveDesc "Karate Chop" 25 tackle
       {ty=FIG, pow=50, crit=1, flags=CONTACT}
   , MoveDesc "Kinesis" 15 celebrate
-      {ty=PSY, acc=80, targ=ADJACENT, eff=AddBoost False zero {acc= -1}}
+      {ty=PSY, acc=80, targ=ADJACENT, eff=AddBoost False zero {acc= -1}, flags=MCOAT}
   , MoveDesc "King's Shield" 10 celebrate
       {ty=PSY, eff=Protect :+ IfUserHitByContactMove do AddBoost True zero {att= -1}}
 
@@ -1390,9 +1392,9 @@ moves =
   , MoveDesc "Leech Life" 10 tackle
       {ty=BUG, pow=80, eff=Drain 0.5, flags=CONTACT}
   , MoveDesc "Leech Seed" 10 celebrate
-      {ty=GRA, acc=90, eff=LeechSeed}
+      {ty=GRA, acc=90, eff=LeechSeed, flags=MCOAT}
   , MoveDesc "Leer" 30 celebrate
-      {ty=NOR, eff=AddBoost False zero {def= -1}}
+      {ty=NOR, eff=AddBoost False zero {def= -1}, flags=MCOAT}
   , MoveDesc "Let's Snuggle Forever" 1 tackle
       {ty=FAI, flags=ZMOVE, pow=190}
   , MoveDesc "Lick" 30 tackle
@@ -1410,7 +1412,7 @@ moves =
   , MoveDesc "Lock-On" 5 celebrate
       {ty=NOR, targ=ADJACENT, eff=LockOn, acc=neverMiss}
   , MoveDesc "Lovely Kiss" 10 celebrate
-      {ty=NOR, targ=ADJACENT, acc=75, eff=EStatus Sleep}
+      {ty=NOR, targ=ADJACENT, acc=75, eff=EStatus Sleep, flags=MCOAT}
   , MoveDesc "Low Kick" 20 tackle
       {ty=FIG, pow=0, eff=PwrHeavyTarget, flags=CONTACT}
   , MoveDesc "Low Sweep" 20 tackle
@@ -1433,7 +1435,7 @@ moves =
   , MoveDesc "Magic Coat" 15 celebrate
       {ty=PSY, eff=MagicCoat, pri=4}
   , MoveDesc "Magic Powder" 20 celebrate
-      {ty=PSY, targ=ADJACENT, eff=SetType PSY False, flags=POWDER}
+      {ty=PSY, targ=ADJACENT, eff=SetType PSY False, flags=POWDER .|. MCOAT}
   , MoveDesc "Magic Room" 10 celebrate
       {ty=PSY, targ=ADJACENT, eff=MagicRoom}
   , MoveDesc "Magical Leaf" 20 tackle
@@ -1460,7 +1462,7 @@ moves =
   , MoveDesc "Me First" 20 celebrate
       {ty=NOR, targ=ADJACENT, eff=MeFirst, flags=IGNSUB, acc=neverMiss}
   , MoveDesc "Mean Look" 5 celebrate
-      {ty=NOR, targ=ADJACENT, eff=NoSwitch, acc=neverMiss}
+      {ty=NOR, targ=ADJACENT, eff=NoSwitch, acc=neverMiss, flags=MCOAT}
   , MoveDesc "Meditate" 40 celebrate
       {ty=PSY, eff=AddBoost True zero {att=1}, flags=SNATCH}
   , MoveDesc "Mega Drain" 15 tackle
@@ -1480,7 +1482,7 @@ moves =
   , MoveDesc "Metal Claw" 35 tackle
       {ty=STE, pow=50, acc=95, eff=10 :% AddBoost True zero {att=1}, flags=CONTACT}
   , MoveDesc "Metal Sound" 40 celebrate
-      {ty=STE, targ=ADJACENT, acc=85, eff=AddBoost False zero {spD= -2}, flags=SOUND .|. IGNSUB}
+      {ty=STE, targ=ADJACENT, acc=85, eff=AddBoost False zero {spD= -2}, flags=SOUND .|. IGNSUB .|. MCOAT}
   , MoveDesc "Meteor Assault" 5 tackle
       {ty=FIG, pow=150, eff=Recharge}
   , MoveDesc "Meteor Beam" 10 tackle
@@ -1500,7 +1502,7 @@ moves =
   , MoveDesc "Minimize" 10 celebrate
       {ty=NOR, eff=AddBoost True zero {eva=1}, flags=SNATCH}
   , MoveDesc "Miracle Eye" 40 celebrate
-      {ty=PSY, targ=ADJACENT, eff=MiracleEye, acc=neverMiss}
+      {ty=PSY, targ=ADJACENT, eff=MiracleEye, acc=neverMiss, flags=MCOAT}
   , MoveDesc "Mirror Coat" 20 tackle
       {ty=PSY, pow=0, cat=Special, eff=MirrorCoat, pri= -5}
   , MoveDesc "Mirror Move" 20 celebrate
@@ -1566,7 +1568,7 @@ moves =
   , MoveDesc "No Retreat" 5 celebrate
       {ty=FIG, eff=NoSwitch :+ omniboost}
   , MoveDesc "Noble Roar" 30 celebrate
-      {ty=NOR, targ=ADJACENT, eff=AddBoost False zero {att= -1, spA= -1}, flags=SOUND}
+      {ty=NOR, targ=ADJACENT, eff=AddBoost False zero {att= -1, spA= -1}, flags=SOUND .|. MCOAT}
   , MoveDesc "Noxious Torque" 10 tackle
       {ty=POI, pow=100}
   , MoveDesc "Nuzzle" 20 tackle
@@ -1583,7 +1585,7 @@ moves =
   , MoveDesc "Octolock" 15 celebrate
       {ty=FIG, targ=ADJACENT, eff=Octolock}
   , MoveDesc "Odor Sleuth" 40 celebrate
-      {ty=NOR, targ=ADJACENT, eff=OdorSleuth, acc=neverMiss}
+      {ty=NOR, targ=ADJACENT, eff=OdorSleuth, acc=neverMiss, flags=MCOAT}
   , MoveDesc "Ominous Wind" 5 tackle
       {ty=GHO, cat=Special, pow=60, eff=10 :% omniboost}
   , MoveDesc "Order Up" 10 tackle
@@ -1602,7 +1604,7 @@ moves =
   , MoveDesc "Parabolic Charge" 20 tackle
       {ty=ELE, cat=Special, pow=65, eff=Drain 0.5}
   , MoveDesc "Parting Shot" 20 celebrate
-      {ty=DAR, targ=ADJACENT, eff=AddBoost False zero {att= -2, spA= -2} :+ Switch True False False, flags=SOUND .|. IGNSUB}
+      {ty=DAR, targ=ADJACENT, eff=AddBoost False zero {att= -2, spA= -2} :+ Switch True False False, flags=SOUND .|. IGNSUB .|. MCOAT}
   , MoveDesc "Pay Day" 20 tackle
       {ty=NOR, pow=40, eff=PayDay}
   , MoveDesc "Payback" 10 tackle
@@ -1626,7 +1628,7 @@ moves =
   , MoveDesc "Plasma Fists" 15 tackle
       {ty=ELE, pow=100, eff=IonDeluge, flags=CONTACT .|. PUNCH}
   , MoveDesc "Play Nice" 20 celebrate
-      {ty=NOR, acc=neverMiss, targ=ADJACENT, eff=AddBoost False zero {att= -1}, flags=IGNSUB}
+      {ty=NOR, acc=neverMiss, targ=ADJACENT, eff=AddBoost False zero {att= -1}, flags=IGNSUB .|. MCOAT}
   , MoveDesc "Play Rough" 10 tackle
       {ty=FAI, acc=90, pow=90, eff=10 :% AddBoost False zero {att= -1}, flags=CONTACT}
   , MoveDesc "Pluck" 20 tackle
@@ -1634,11 +1636,11 @@ moves =
   , MoveDesc "Poison Fang" 15 tackle
       {ty=POI, pow=50, eff=50 :% EStatus Toxic, flags=CONTACT .|. BITE}
   , MoveDesc "Poison Gas" 40 celebrate
-      {ty=POI, targ=ADJACENT, acc=90, eff=EStatus Poison}
+      {ty=POI, targ=ADJACENT, acc=90, eff=EStatus Poison, flags=MCOAT}
   , MoveDesc "Poison Jab" 20 tackle
       {ty=POI, pow=80, eff=30 :% EStatus Poison, flags=CONTACT}
   , MoveDesc "Poison Powder" 35 celebrate
-      {ty=POI, targ=ADJACENT, acc=75, eff=EStatus Poison, flags=POWDER}
+      {ty=POI, targ=ADJACENT, acc=75, eff=EStatus Poison, flags=POWDER .|. MCOAT}
   , MoveDesc "Poison Sting" 35 tackle
       {ty=POI, pow=15, eff=30 :% EStatus Poison}
   , MoveDesc "Poison Tail" 25 tackle
@@ -1654,7 +1656,7 @@ moves =
   , MoveDesc "Pound" 35 tackle
       {ty=NOR, pow=40, flags=CONTACT}
   , MoveDesc "Powder" 20 celebrate
-      {ty=BUG, targ=ALL .|. WIDE, eff=Powder, pri=1, flags=IGNSUB .|. POWDER}
+      {ty=BUG, targ=ALL .|. WIDE, eff=Powder, pri=1, flags=IGNSUB .|. POWDER .|. MCOAT}
   , MoveDesc "Powder Snow" 25 tackle
       {ty=ICE, cat=Special, pow=40, eff=10 :% EStatus Freeze}
   , MoveDesc "Power Gem" 20 tackle
@@ -1712,7 +1714,7 @@ moves =
   , MoveDesc "Punishment" 5 tackle
       {ty=DAR, pow=0, eff=Punishment, flags=CONTACT}
   , MoveDesc "Purify" 20 celebrate
-      {ty=POI, targ=ADJACENT, eff=Purify}
+      {ty=POI, targ=ADJACENT, eff=Purify, flags=MCOAT}
   , MoveDesc "Pursuit" 20 tackle
       {ty=DAR, pow=40, eff=Pursuit, flags=CONTACT, acc=neverMiss}
   , MoveDesc "Pyro Ball" 5 tackle
@@ -1776,7 +1778,7 @@ moves =
   , MoveDesc "Rising Voltage" 20 tackle
       {ty=ELE, cat=Special, pow=70, eff=DoublePwrInTerrain TElectric}
   , MoveDesc "Roar" 20 celebrate
-      {ty=NOR, targ=ADJACENT, eff=Switch False True False, pri= -6, flags=SOUND .|. IGNSUB, acc=neverMiss}
+      {ty=NOR, targ=ADJACENT, eff=Switch False True False, pri= -6, flags=SOUND .|. IGNSUB .|. MCOAT, acc=neverMiss}
   , MoveDesc "Roar of Time" 5 tackle
       {ty=DRA, cat=Special, pow=150, acc=90, eff=Recharge}
   , MoveDesc "Rock Blast" 10 tackle
@@ -1819,7 +1821,7 @@ moves =
   , MoveDesc "Salt Cure" 15 tackle
       {ty=ROC, pow=40, eff=SaltCure}
   , MoveDesc "Sand Attack" 15 celebrate
-      {ty=GRO, targ=ADJACENT, eff=AddBoost False zero {acc= -1}}
+      {ty=GRO, targ=ADJACENT, eff=AddBoost False zero {acc= -1}, flags=MCOAT}
   , MoveDesc "Sand Tomb" 15 tackle
       {ty=GRO, pow=35, acc=85, eff=ELocking SandTomb}
   , MoveDesc "Sandsear Storm" 10 tackle
@@ -1834,13 +1836,13 @@ moves =
   , MoveDesc "Scale Shot" 20 tackle
       {ty=DRA, pow=25, acc=90, hits=(2,5), eff=AddBoost True zero{spe=1, def= -1}}
   , MoveDesc "Scary Face" 10 celebrate
-      {ty=NOR, targ=ADJACENT, eff=AddBoost False zero{spe= -2}}
+      {ty=NOR, targ=ADJACENT, eff=AddBoost False zero{spe= -2}, flags=MCOAT}
   , MoveDesc "Scorching Sands" 10 tackle
       {ty=GRO, cat=Special, pow=70, eff=EStatus Burn} -- TODO: "May" burn target (but 100%)
   , MoveDesc "Scratch" 35 tackle
       {ty=NOR, pow=40, flags=CONTACT}
   , MoveDesc "Screech" 40 celebrate
-      {ty=NOR, acc=85, targ=ADJACENT, eff=AddBoost False zero{def= -2}, flags=SOUND .|. IGNSUB}
+      {ty=NOR, acc=85, targ=ADJACENT, eff=AddBoost False zero{def= -2}, flags=SOUND .|. IGNSUB .|. MCOAT}
   , MoveDesc "Searing Shot" 5 tackle
       {ty=FIR, cat=Special, pow=100, eff=30 :% EStatus Burn, flags=BULLET}
   , MoveDesc "Searing Sunraze Smash" 1 tackle
@@ -1897,9 +1899,9 @@ moves =
   , MoveDesc "Silver Wind" 5 tackle
       {ty=BUG, cat=Special, pow=60, eff=10 :% omniboost}
   , MoveDesc "Simple Beam" 15 celebrate
-      {ty=NOR, targ=ADJACENT, eff=SetAbility simpleID}
+      {ty=NOR, targ=ADJACENT, eff=SetAbility simpleID, flags=MCOAT}
   , MoveDesc "Sing" 15 celebrate
-      {ty=NOR, targ=ADJACENT, acc=55, eff=EStatus Sleep, flags=SOUND .|. IGNSUB}
+      {ty=NOR, targ=ADJACENT, acc=55, eff=EStatus Sleep, flags=SOUND .|. IGNSUB .|. MCOAT}
   , MoveDesc "Sinister Arrow Raid" 1 tackle
       {ty=GHO, pow=180, flags=ZMOVE, acc=neverMiss}
   , MoveDesc "Sizzly Slide" 20 tackle
@@ -1925,7 +1927,7 @@ moves =
   , MoveDesc "Slash" 20 tackle
       {ty=NOR, pow=70, crit=1, flags=CONTACT .|. SLICE}
   , MoveDesc "Sleep Powder" 15 celebrate
-      {ty=GRA, acc=75, targ=ADJACENT, flags=POWDER, eff=EStatus Sleep}
+      {ty=GRA, acc=75, targ=ADJACENT, flags=POWDER .|. MCOAT, eff=EStatus Sleep}
   , MoveDesc "Sleep Talk" 10 celebrate
       {ty=NOR, eff=FailIfNotAsleep :+ SleepTalk}
   , MoveDesc "Sludge" 20 tackle
@@ -1943,7 +1945,7 @@ moves =
   , MoveDesc "Smog" 20 tackle
       {ty=POI, cat=Special, pow=30, acc=70, eff=40 :% EStatus Poison}
   , MoveDesc "Smokescreen" 20 celebrate
-      {ty=NOR, targ=ADJACENT, eff=AddBoost False zero {acc= -1}}
+      {ty=NOR, targ=ADJACENT, eff=AddBoost False zero {acc= -1}, flags=MCOAT}
   , MoveDesc "Snap Trap" 15 tackle
       {ty=GRA, pow=35, eff=ELocking SnapTrap, flags=CONTACT}
   , MoveDesc "Snarl" 15 tackle
@@ -1957,7 +1959,7 @@ moves =
   , MoveDesc "Snowscape" 10 celebrate
       {ty=ICE, eff=Snowscape}
   , MoveDesc "Soak" 20 celebrate
-      {ty=WAT, targ=ADJACENT, eff=SetType WAT False}
+      {ty=WAT, targ=ADJACENT, eff=SetType WAT False, flags=MCOAT}
   , MoveDesc "Soft-Boiled" 10 celebrate
       {ty=NOR, eff=Recover 0.5, flags=SNATCH}
   , MoveDesc "Solar Beam" 10 tackle
@@ -1983,11 +1985,11 @@ moves =
   , MoveDesc "Spicy Extract" 15 celebrate
       {ty=GRA, targ=ADJACENT, eff=AddBoost False zero{def= -3, att=2}, acc=neverMiss}
   , MoveDesc "Spider Web" 10 celebrate
-      {ty=BUG, targ=ADJACENT, eff=NoSwitch, acc=neverMiss}
+      {ty=BUG, targ=ADJACENT, eff=NoSwitch, acc=neverMiss, flags=MCOAT}
   , MoveDesc "Spike Cannon" 15 tackle
       {ty=NOR, pow=20, hits=(2,5)}
   , MoveDesc "Spikes" 20 celebrate
-      {ty=GRO, targ=FOES .|. WIDE, eff=EHazard Spikes}
+      {ty=GRO, targ=FOES .|. WIDE, eff=EHazard Spikes, flags=MCOAT}
   , MoveDesc "Spiky Shield" 10 celebrate
       {ty=GRA, pri=4, eff=Protect :+ IfUserHitByContactMove do
         FractionalDamageMax (1/8) }
@@ -2002,7 +2004,7 @@ moves =
   , MoveDesc "Spit Up" 10 tackle
       {ty=NOR, cat=Special, pow=0, eff=SpitUp}
   , MoveDesc "Spite" 10 celebrate
-      {ty=GHO, targ=ADJACENT, eff=Spite, flags=IGNSUB}
+      {ty=GHO, targ=ADJACENT, eff=Spite, flags=IGNSUB .|. MCOAT}
   , MoveDesc "Splash" 40 celebrate
       {ty=NOR}
   , MoveDesc "Splintered Stormshards" 1 tackle
@@ -2010,13 +2012,13 @@ moves =
   , MoveDesc "Splishy Splash" 15 tackle
       {ty=WAT, cat=Special, pow=90, eff=30 :% EStatus Paralysis}
   , MoveDesc "Spore" 15 celebrate
-      {ty=GRA, targ=ADJACENT, eff=EStatus Sleep, flags=POWDER}
+      {ty=GRA, targ=ADJACENT, eff=EStatus Sleep, flags=POWDER .|. MCOAT}
   , MoveDesc "Spotlight" 15 celebrate
-      {ty=NOR, targ=ADJACENT, eff=FollowMe, pri=3}
+      {ty=NOR, targ=ADJACENT, eff=FollowMe, pri=3, flags=MCOAT}
   , MoveDesc "Springtide Storm" 5 tackle
       {ty=FAI, cat=Special, pow=100, acc=80, eff=SpringtideStorm, flags=WIND}
   , MoveDesc "Stealth Rock" 20 celebrate
-      {ty=ROC, targ=FOES .|. WIDE, eff=EHazard Rocks}
+      {ty=ROC, targ=FOES .|. WIDE, eff=EHazard Rocks, flags=MCOAT}
   , MoveDesc "Steam Eruption" 5 tackle
       {ty=WAT, cat=Special, pow=110, acc=95, eff=30 :% EStatus Burn}
   , MoveDesc "Steamroller" 20 tackle
@@ -2028,7 +2030,7 @@ moves =
   , MoveDesc "Steel Wing" 25 tackle
       {ty=STE, pow=70, acc=90, eff=10 :% AddBoost True zero {def=1}, flags=CONTACT}
   , MoveDesc "Sticky Web" 20 celebrate
-      {ty=BUG, targ=FOES .|. WIDE, eff=EHazard Web}
+      {ty=BUG, targ=FOES .|. WIDE, eff=EHazard Web, flags=MCOAT}
   , MoveDesc "Stockpile" 20 celebrate
       {ty=NOR, eff=Stockpile, flags=SNATCH}
   , MoveDesc "Stoked Sparksurfer" 1 tackle
@@ -2050,9 +2052,9 @@ moves =
   , MoveDesc "Strength" 15 tackle
       {ty=NOR, pow=80, flags=CONTACT}
   , MoveDesc "Strength Sap" 10 celebrate
-      {ty=GRA, targ=ADJACENT, eff=StrengthSap :+ AddBoost False zero {att= -1}}
+      {ty=GRA, targ=ADJACENT, eff=StrengthSap :+ AddBoost False zero {att= -1}, flags=MCOAT}
   , MoveDesc "String Shot" 40 celebrate
-      {ty=BUG, targ=ADJACENT, acc=95, eff=AddBoost False zero {spe= -2}}
+      {ty=BUG, targ=ADJACENT, acc=95, eff=AddBoost False zero {spe= -2}, flags=MCOAT}
   , MoveDesc "Struggle" 1 tackle
       {ty=NON, pow=50, eff=Struggle, flags=CONTACT, acc=neverMiss}
   , MoveDesc "Struggle Bug" 20 tackle
@@ -2060,7 +2062,7 @@ moves =
   , MoveDesc "Stuff Cheeks" 10 celebrate
       {ty=NOR, eff=EatBerry True :+ AddBoost True zero {def=2}}
   , MoveDesc "Stun Spore" 30 celebrate
-      {ty=GRA, targ=ADJACENT, acc=75, eff=EStatus Paralysis, flags=POWDER}
+      {ty=GRA, targ=ADJACENT, acc=75, eff=EStatus Paralysis, flags=POWDER .|. MCOAT}
   , MoveDesc "Submission" 20 tackle
       {ty=FIG, pow=80, acc=80, eff=Recoil 0.25, flags=CONTACT}
   , MoveDesc "Substitute" 10 celebrate
@@ -2077,20 +2079,20 @@ moves =
   , MoveDesc "Superpower" 5 tackle
       {ty=FIG, pow=120, eff=AddBoost False zero {att= -1, def= -1}, flags=CONTACT}
   , MoveDesc "Supersonic" 20 celebrate
-      {ty=NOR, targ=ADJACENT, acc=55, eff=Confuse, flags=SOUND .|. IGNSUB}
+      {ty=NOR, targ=ADJACENT, acc=55, eff=Confuse, flags=SOUND .|. IGNSUB .|. MCOAT}
   -- supersonic skystrike
   , MoveDesc "Surf" 15 tackle
       {ty=WAT, cat=Special, pow=90, targ=ADJACENT .|. WIDE}
   , MoveDesc "Surging Strikes" 5 tackle
       {ty=WAT, pow=25, crit=alwaysCrit, eff=IgnoreBoosts, flags=CONTACT .|. PUNCH}
   , MoveDesc "Swagger" 15 celebrate
-      {ty=NOR, targ=ADJACENT, acc=85, eff=Confuse :+ AddBoost False zero {att=2}}
+      {ty=NOR, targ=ADJACENT, acc=85, eff=Confuse :+ AddBoost False zero {att=2}, flags=MCOAT}
   , MoveDesc "Swallow" 10 celebrate
       {ty=NOR, eff=Swallow, flags=SNATCH}
   , MoveDesc "Sweet Kiss" 10 celebrate
-      {ty=FAI, acc=75, eff=Confuse, targ=ADJACENT}
+      {ty=FAI, acc=75, eff=Confuse, targ=ADJACENT, flags=MCOAT}
   , MoveDesc "Sweet Scent" 20 celebrate
-      {ty=NOR, targ=ADJACENT, eff=AddBoost False zero {eva= -1}}
+      {ty=NOR, targ=ADJACENT, eff=AddBoost False zero {eva= -1}, flags=MCOAT}
   , MoveDesc "Swift" 20 tackle
       {ty=NOR, cat=Special, pow=60, acc=neverMiss, targ=ADJFOES .|. WIDE}
   , MoveDesc "Switcheroo" 10 celebrate
@@ -2109,7 +2111,7 @@ moves =
   , MoveDesc "Tail Slap" 10 tackle
       {ty=NOR, pow=25, acc=85, hits=(2,5), flags=CONTACT}
   , MoveDesc "Tail Whip" 30 celebrate
-      {ty=NOR, targ=ADJACENT, eff=AddBoost False zero {def= -1}}
+      {ty=NOR, targ=ADJACENT, eff=AddBoost False zero {def= -1}, flags=MCOAT}
   , MoveDesc "Tailwind" 15 celebrate
       {ty=FLY, targ=ALLIES .|. WIDE, eff=Tailwind, flags=WIND .|. SNATCH}
   , MoveDesc "Take Down" 20 tackle
@@ -2117,11 +2119,11 @@ moves =
   , MoveDesc "Take Heart" 10 celebrate -- TODO: Verify the boost
       {ty=PSY, eff=ClearStatus :+ AddBoost True zero {att=1,spA=1,def=1,spD=1}}
   , MoveDesc "Tar Shot" 15 celebrate
-      {ty=ROC, targ=ADJACENT, eff=TarShot :+ AddBoost False zero{spe= -1}}
+      {ty=ROC, targ=ADJACENT, eff=TarShot :+ AddBoost False zero{spe= -1}, flags=MCOAT}
   , MoveDesc "Taunt" 20 celebrate
-      {ty=DAR, targ=ADJACENT, eff=Taunt, flags=IGNSUB}
+      {ty=DAR, targ=ADJACENT, eff=Taunt, flags=IGNSUB .|. MCOAT}
   , MoveDesc "Tearful Look" 20 celebrate
-      {ty=NOR, targ=ADJACENT, eff=AddBoost False zero {att= -1, spA= -1}}
+      {ty=NOR, targ=ADJACENT, eff=AddBoost False zero {att= -1, spA= -1}, flags=MCOAT}
   , MoveDesc "Teatime" 10 celebrate
       {ty=NOR, targ=ALL .|. WIDE, eff=EatBerry False}
   , MoveDesc "Techno Blast" 5 tackle
@@ -2130,7 +2132,7 @@ moves =
   , MoveDesc "Teeter Dance" 20 celebrate
       {ty=NOR, flags=DANCE, targ=ADJACENT .|. WIDE, eff=Confuse}
   , MoveDesc "Telekinesis" 15 celebrate
-      {ty=PSY, targ=ADJACENT, eff=Telekinesis, acc=neverMiss}
+      {ty=PSY, targ=ADJACENT, eff=Telekinesis, acc=neverMiss, flags=MCOAT}
   , MoveDesc "Teleport" 20 celebrate
       {ty=PSY, eff=Switch True False False, pri= -6}
   , MoveDesc "Tera Blast" 10 tackle
@@ -2162,27 +2164,27 @@ moves =
   , MoveDesc "Thunder Shock" 30 tackle
       {ty=ELE, cat=Special, pow=40, eff=10 :% EStatus Paralysis}
   , MoveDesc "Thunder Wave" 20 celebrate
-      {ty=ELE, targ=ADJACENT, acc=90, eff=EStatus Paralysis}
+      {ty=ELE, targ=ADJACENT, acc=90, eff=EStatus Paralysis, flags=MCOAT}
   , MoveDesc "Thunderbolt" 15 tackle
       {ty=ELE, cat=Special, pow=90, eff=10 :% EStatus Paralysis}
   , MoveDesc "Thunderous Kick" 10 tackle
       {ty=FIG, pow=90, eff=AddBoost False zero {def= -1}, flags=CONTACT}
   , MoveDesc "Tickle" 20 celebrate
-      {ty=NOR, targ=ADJACENT, eff=AddBoost False zero {att= -1, def= -1}}
+      {ty=NOR, targ=ADJACENT, eff=AddBoost False zero {att= -1, def= -1}, flags=MCOAT}
   , MoveDesc "Tidy Up" 10 celebrate
       {ty=NOR, eff=ClearHazard :+ RemoveSubstitute :+ AddBoost True zero {att=1, spe=1}}
   , MoveDesc "Topsy-Turvy" 20 celebrate
-      {ty=DAR, targ=ADJACENT, eff=InvBoost, acc=neverMiss}
+      {ty=DAR, targ=ADJACENT, eff=InvBoost, acc=neverMiss, flags=MCOAT}
   , MoveDesc "Torch Song" 10 tackle
       {ty=FIR, cat=Special, pow=80, eff=AddBoost True zero{spA= 1}, flags=SOUND}
   , MoveDesc "Torment" 15 celebrate
-      {ty=DAR, targ=ADJACENT, eff=Torment, flags=IGNSUB}
+      {ty=DAR, targ=ADJACENT, eff=Torment, flags=IGNSUB .|. MCOAT}
   , MoveDesc "Toxic" 10 celebrate -- TODO: never misses if user is a poison-type
-      {ty=POI, targ=ADJACENT, acc=90, eff=EStatus Toxic}
+      {ty=POI, targ=ADJACENT, acc=90, eff=EStatus Toxic, flags=MCOAT}
   , MoveDesc "Toxic Spikes" 20 celebrate
-      {ty=POI, targ=FOES .|. WIDE, eff=EHazard ToxicSpikes}
+      {ty=POI, targ=FOES .|. WIDE, eff=EHazard ToxicSpikes, flags=MCOAT}
   , MoveDesc "Toxic Thread" 20 celebrate
-      {ty=POI, targ=ADJACENT, eff=EStatus Poison :+ AddBoost False zero {spe= -1}}
+      {ty=POI, targ=ADJACENT, eff=EStatus Poison :+ AddBoost False zero {spe= -1}, flags=MCOAT}
   , MoveDesc "Trailblaze" 20 tackle
       {ty=GRA, pow=50, eff=AddBoost True zero {spe=1}, flags=CONTACT}
   , MoveDesc "Transform" 10 celebrate
@@ -2194,7 +2196,7 @@ moves =
   , MoveDesc "Trick Room" 5 celebrate
       {ty=PSY, eff=TrickRoom, pri= -7}
   , MoveDesc "Trick-or-Treat" 20 celebrate
-      {ty=GHO, targ=ADJACENT, eff=AddType GHO}
+      {ty=GHO, targ=ADJACENT, eff=AddType GHO, flags=MCOAT}
   , MoveDesc "Triple Arrows" 10 tackle
       {ty=FIG, pow=90, eff=AddBoost True zero {cri=1} :+ AddBoost False zero {def= -1}}
   , MoveDesc "Triple Axel" 10 tackle
@@ -2291,7 +2293,7 @@ moves =
   , MoveDesc "Work Up" 30 celebrate
       {ty=NOR, eff=AddBoost True zero {att=1, spA=1}, flags=SNATCH}
   , MoveDesc "Worry Seed" 10 celebrate
-      {ty=GRA, targ=ADJACENT, eff=SetAbility insomniaID}
+      {ty=GRA, targ=ADJACENT, eff=SetAbility insomniaID, flags=MCOAT}
   , MoveDesc "Wrap" 20 tackle
       {ty=NOR, pow=15, acc=90, eff=ELocking Wrap, flags=CONTACT}
   , MoveDesc "Wring Out" 5 tackle
@@ -2299,7 +2301,7 @@ moves =
   , MoveDesc "X-Scissor" 15 tackle
       {ty=BUG, pow=80, flags=CONTACT .|. SLICE}
   , MoveDesc "Yawn" 10 celebrate
-      {ty=NOR, targ=ADJACENT, eff=Yawn, acc=neverMiss}
+      {ty=NOR, targ=ADJACENT, eff=Yawn, acc=neverMiss, flags=MCOAT}
   , MoveDesc "Zap Cannon" 5 tackle
       {ty=ELE, cat=Special, pow=120, acc=50, eff=EStatus Paralysis, flags=BULLET}
   , MoveDesc "Zen Headbutt" 15 tackle
