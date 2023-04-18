@@ -10,6 +10,7 @@ import Data.IntSet (IntSet)
 
 type Countdown = Int
 type Countup   = Int
+type Turn      = Int
 
 ----
 
@@ -65,6 +66,8 @@ data BattleMon = BattleMon
    , telekinesis :: Countdown -- Telekinesis has lots of rules- check bulbapedia!
    , partialTrap :: Countdown -- partial trapping moves (bind, whirlpool, magma storm..)
    , stockpiles  :: Int
+   , recharge    :: Countdown -- skip turn unless 0
+   , odorSleuth  :: Bool
    }
 
 newBattleMon api pok = BattleMon
@@ -119,6 +122,8 @@ newBattleMon api pok = BattleMon
   , telekinesis = 0
   , partialTrap = 0
   , stockpiles  = 0
+  , recharge    = 0
+  , odorSleuth  = False
   }
 
 ----
@@ -150,27 +155,33 @@ newField = Field
 
 
 data FieldLane = FieldLane
-   { lightScreen :: Countdown
-   , reflect     :: Countdown
-   , auroraveil  :: Countdown
-   , tailwind    :: Countdown
-   , safeguard   :: Countdown
-   , spikes      :: Int
-   , toxicSpikes :: Int
-   , rocks       :: Bool
-   , web         :: Bool
+   { lightScreen      :: Countdown
+   , reflect          :: Countdown
+   , auroraveil       :: Countdown
+   , tailwind         :: Countdown
+   , safeguard        :: Countdown
+   , spikes           :: Int
+   , toxicSpikes      :: Int
+   , rocks            :: Bool
+   , web              :: Bool
+   , quickGuard       :: Bool
+   , alliesDefeated   :: Int
+   , lastAllyDefeated :: Turn
    }
 
 newFieldLane = FieldLane
-  { lightScreen = 0
-  , reflect     = 0
-  , auroraveil  = 0
-  , tailwind    = 0
-  , spikes      = 0
-  , toxicSpikes = 0
-  , safeguard   = 0
-  , rocks       = False
-  , web         = False
+  { lightScreen      = 0
+  , reflect          = 0
+  , auroraveil       = 0
+  , tailwind         = 0
+  , spikes           = 0
+  , toxicSpikes      = 0
+  , safeguard        = 0
+  , rocks            = False
+  , web              = False
+  , quickGuard       = False
+  , alliesDefeated   = 0
+  , lastAllyDefeated = -1
   }
 
 data Weather
@@ -203,17 +214,19 @@ data Battle = Battle
    , actionCursor    :: Int
    , moveCursor      :: Int
    , grantExperience :: Bool
+   , turnCount       :: Int
    }
 
 newBattle api party1 party2 wild = Battle
-  { field = newField
-  , mon1  = newBattleMon api sendOut1
-  , mon2  = newBattleMon api sendOut2
-  , log   = []
-  , isWild = wild
-  , actionCursor = 0
-  , moveCursor = 0
+  { field           = newField
+  , mon1            = newBattleMon api sendOut1
+  , mon2            = newBattleMon api sendOut2
+  , log             = []
+  , isWild          = wild
+  , actionCursor    = 0
+  , moveCursor      = 0
   , grantExperience = True
+  , turnCount       = 1
   , ..
   }
   where

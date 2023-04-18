@@ -226,12 +226,12 @@ data Effect
    -- will recieve the following effect. The target of the effect is the foe
    --
    | IfUserHitByContactMove Effect
+   | IfUserHit Effect
 
    | Endure      -- user survive at at-least 1 HP, may fail if used in succession
    | Don'tKill   -- Target survives at at-least 1 HP
    | FinalGambit -- user faints, target take damage equal to users HP
 
-   | BeakBlast   -- if hit, attacker is burned
    | ShieldTrap  -- if attacked, attacker is damaged
    | DestinyBond -- if killed, attacker is killed. Lasts 2 turns
 
@@ -469,6 +469,7 @@ data Effect
 
 pattern OHKO   = FractionalDamage 1.0
 pattern HalfHP = FractionalDamage 0.5
+pattern BeakBlast = IfUserHit (EStatus Burn)
 
 
 data Terrain
@@ -519,19 +520,6 @@ data CopyAbility
    = Target2Allies
    | Target2User
    | User2Target
-   deriving (Show, Eq, Ord, Enum, Bounded)
-
-data LockingMove
-   = Whirlpool
-   | Firespin
-   | Bind
-   | Clamp
-   | Infestation
-   | MagmaStorm
-   | SandTomb
-   | SnapTrap
-   | ThunderCage
-   | Wrap
    deriving (Show, Eq, Ord, Enum, Bounded)
 
 ----

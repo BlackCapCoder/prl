@@ -6,7 +6,8 @@ module Battle
 
 import Battle.Type
 import Battle.BasicAttack
-import Battle.Move
+import Battle.Move hiding (tell)
+import Battle.Move qualified as BMove
 import Pokemon.Nature
 import Pokemon.PokeAPI qualified as API
 import Pokemon.Pokemon
@@ -91,7 +92,7 @@ mainLoop = do
 
   -- TODO: handle speed
 
-  res1 <- handleBattleAction userAction
+  res1 <- handleBattleAction userAction False
 
   case res1 of
 
@@ -109,7 +110,7 @@ mainLoop = do
     Nothing -> do
       pause
       swapField
-      res2 <- handleBattleAction foeAction
+      res2 <- handleBattleAction foeAction True
       swapField
 
       case res2 of
@@ -204,7 +205,8 @@ endOfTurn = do
   -- TODO: pokemon may have died
 
   modify \Battle {..} -> Battle
-    { field = tickTurnField field
+    { field     = tickTurnField field
+    , turnCount = succ turnCount
     , ..
     }
 
@@ -265,6 +267,7 @@ tickTurnLane l = l
   , auroraveil  = max 0 $ pred l.auroraveil
   , tailwind    = max 0 $ pred l.tailwind
   , safeguard   = max 0 $ pred l.safeguard
+  , quickGuard  = False
   }
 
 tickTurnField f = f
@@ -306,8 +309,10 @@ editHP f = do
 
 ----
 
-handleBattleAction act = do
+handleBattleAction act opp = do
   World.World {settings, api} <- lift get
+
+  let prefix | opp = "The opposing " | let = ""
 
   case act of
     Run ->
@@ -320,7 +325,7 @@ handleBattleAction act = do
 
     Switch  mon  -> do
       Battle {mon1} <- get
-      tell $ pokemonName api mon1.pokemon <> " withdrew!"
+      tell $ prefix <> pokemonName api mon1.pokemon <> " withdrew!"
 
       modify \b -> b { mon1 = b.mon1 { pokemon = cureToxic b.mon1.pokemon } }
       flushMon
@@ -333,7 +338,7 @@ handleBattleAction act = do
       pure Nothing
 
     UseMove move -> do
-      performMove move
+      performMove move opp
       Battle {..} <- get
 
       pure if
@@ -469,14 +474,16 @@ selectSwitch canCancel = do
 
 ----
 
-performMove move = do
+performMove move opp = do
   World.World {..} <- lift get
   Battle {..} <- get
+
+  let prefix | opp = "The opposing " | let = ""
 
   -- flinch
   if mon1.flinched
   then do
-    tell $ pokemonName api mon1.pokemon <> " flinched and couldn't move!"
+    tell $ prefix <> pokemonName api mon1.pokemon <> " flinched and couldn't move!"
   else do
 
   -- statuses that might prevent the move
@@ -491,8 +498,8 @@ performMove move = do
             }
           , ..
           }
-        tell $ pokemonName api mon1.pokemon <> " woke up!"
-        performMove' move
+        tell $ prefix <> pokemonName api mon1.pokemon <> " woke up!"
+        performMove' move opp
       | let -> do
           -- TODO: sleep talk, snore
           put Battle
@@ -503,14 +510,14 @@ performMove move = do
               }
             , ..
             }
-          tell $ pokemonName api mon1.pokemon <> " is fast asleep"
+          tell $ prefix <> pokemonName api mon1.pokemon <> " is fast asleep"
 
     Just Paralysis -> do
       roll <- liftIO $ randomRIO (0.0, 1.0)
       if roll <= settings.paralysisChance then do
-        tell $ pokemonName api mon1.pokemon <> " couldn't move because it's paralyzed!"
+        tell $ prefix <> pokemonName api mon1.pokemon <> " couldn't move because it's paralyzed!"
       else do
-        performMove' move
+        performMove' move opp
 
     Just Freeze -> do
       thawRoll <- liftIO $ randomRIO (0.0, 1.0)
@@ -519,7 +526,7 @@ performMove move = do
       let thaw = thawRoll <= settings.thawChance
 
       if not thaw then do
-        tell $ pokemonName api mon1.pokemon <> " is frozen"
+        tell $ prefix <> pokemonName api mon1.pokemon <> " is frozen"
       else do
         put Battle
           { mon1 = mon1
@@ -529,31 +536,33 @@ performMove move = do
             }
           , ..
           }
-        tell $ pokemonName api mon1.pokemon <> " thawed!"
-        performMove' move
+        tell $ prefix <> pokemonName api mon1.pokemon <> " thawed!"
+        performMove' move opp
 
-    _ -> performMove' move
+    _ -> performMove' move opp
 
-performMove' move = do
+performMove' move opp = do
   World.World {..} <- lift get
   Battle {..} <- get
 
+  let prefix | opp = "The opposing " | let = ""
+
   -- confusion
   case compare mon1.confusion 0 of
-    LT -> performMove'' move
+    LT -> performMove'' move opp
     EQ -> do
       put Battle { mon1 = mon1 { confusion = -1 }, .. }
-      tell $ pokemonName api mon1.pokemon <> " snapped out of its confusion"
-      performMove'' move
+      tell $ prefix <> pokemonName api mon1.pokemon <> " snapped out of its confusion"
+      performMove'' move opp
     GT -> do
       put Battle { mon1 = mon1 { confusion = mon1.confusion - 1 }, .. }
-      tell $ pokemonName api mon1.pokemon <> " is confused " <> show mon1.confusion
+      tell $ prefix <> pokemonName api mon1.pokemon <> " is confused " <> show mon1.confusion
       roll <- liftIO $ randomRIO (0.0, 1.0)
       if roll <= settings.confusionChance then do
-        tell $ pokemonName api mon1.pokemon <> " hit itself in its confusion!"
+        tell $ prefix <> pokemonName api mon1.pokemon <> " hit itself in its confusion!"
         confusionHit
       else do
-        performMove'' move
+        performMove'' move opp
 
 confusionHit = do
 
@@ -578,14 +587,16 @@ confusionHit = do
     , ..
     }
 
-performMove'' move = do
-  -- attract
-
+performMove'' move opp = do
   World.World {..} <- lift get
   Battle {..} <- get
 
+  let prefix | opp = "The opposing " | let = ""
+
+  -- attract
+
   let Just m = IM.lookup move.id api.moves
-  tell $ pokemonName api mon1.pokemon <> " used " <> Text.unpack (moveName m)
+  tell $ prefix <> pokemonName api mon1.pokemon <> " used " <> Text.unpack (moveName m)
 
   modifyMove move \m -> m { pp = max 0 (pred m.pp) }
 
@@ -630,10 +641,11 @@ runPMove mid mov = do
     runBasicAttackResult =<< basicAttack mid mov.ty (mov.cat == Pok.Physical) mov.pow mon1 mon2
 
   let env = MoveEnv
-        { getUser   = gets \b -> b.mon1
-        , getTarget = gets \b -> b.mon2
-        , putUser   = \a -> modify \b -> b {mon1 = a}
-        , putTarget = \a -> modify \b -> b {mon2 = a}
+        { getUser     = gets \b -> b.mon1
+        , getTarget   = gets \b -> b.mon2
+        , putUser     = \a -> modify \b -> b {mon1 = a}
+        , putTarget   = \a -> modify \b -> b {mon2 = a}
+        , tell        = Battle.tell
         }
 
   -- tell $ "Effect: " <> show mov.eff
@@ -891,7 +903,37 @@ giveExp = do
         }
 
 onLevelUp = do
-  pure ()
+  World.World {..} <- lift get
+  Battle {..} <- get
+
+  let ms = levelUpMoves api mon1.pokemon
+
+  forM_ ms \m -> do
+    Battle {..} <- get
+    if length mon1.pokemon.moves == 4 then do
+      tell $ concat
+        [ pokemonName api mon1.pokemon
+        , " wants to learn "
+        , T.unpack (moveName m)
+        , ", but it already knows 4 moves"
+        ]
+      pure ()
+    else do
+      put Battle
+        { mon1 = mon1
+          { pokemon = mon1.pokemon
+            { moves = mon1.pokemon.moves ++
+              [ PokemonMove
+                { id     = m.id
+                , pp_ups = 0
+                , pp     = m.pp
+                }
+              ]
+            }
+          }
+        , ..
+        }
+      tell $ pokemonName api mon1.pokemon <> " learned " <> T.unpack (moveName m) <> "!"
 
 ----
 

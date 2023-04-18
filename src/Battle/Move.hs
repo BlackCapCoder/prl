@@ -19,10 +19,11 @@ import Data.List (elem, notElem)
 
 
 data MoveEnv m = MoveEnv
-   { getUser   :: m BattleMon
-   , getTarget :: m BattleMon
-   , putUser   :: BattleMon -> m ()
-   , putTarget :: BattleMon -> m ()
+   { getUser     :: m BattleMon
+   , getTarget   :: m BattleMon
+   , putUser     :: BattleMon -> m ()
+   , putTarget   :: BattleMon -> m ()
+   , tell        :: String    -> m ()
    }
 
 
@@ -53,14 +54,13 @@ runEffect env@MoveEnv {..} eff = do
         putTarget targ { confusion = roll }
 
     Attract -> do
-      if ( user.pokemon.gender /= Genderless
-        && targ.pokemon.gender /= Genderless
-        && user.pokemon.gender /= targ.pokemon.gender
-         )
+      if user.pokemon.gender /= Genderless &&
+         targ.pokemon.gender /= Genderless &&
+         user.pokemon.gender /= targ.pokemon.gender
       then do
         putTarget targ { attraction = IntSet.insert user.pokemon.uid targ.attraction }
       else do
-        pure () -- no attraction
+        tell "But it failed.."
 
     Curse -> do
       if GHO `elem` user.pokemon.types
@@ -406,13 +406,19 @@ runEffect env@MoveEnv {..} eff = do
           putUserStatus   env Nothing
           putTargetStatus env user.pokemon.status
 
+    Refresh -> case user.pokemon.status of
+      Just Pok.Paralysis -> putUserStatus env Nothing
+      Just Pok.Burn      -> putUserStatus env Nothing
+      Just Pok.Poison    -> putUserStatus env Nothing
+      Just (Pok.Toxic _) -> putUserStatus env Nothing
+      _                  -> tell "But it failed.."
+
     FilletAway                     -> error "FilletAway"
     Drain _                        -> error "Drain"
     DrainSleeping _                -> error "DrainSleeping"
     PainSplit                      -> error "PainSplit" -- TODO: Lazy
     Switch {}                      -> error "Switch"
     Camouflage                     -> error "Camouflage"
-    Recharge                       -> error "Recharge"
     Precharge                      -> error "Precharge"
     CopyAbility Target2Allies      -> error "CopyAbility Target2Allies"
     AddBoostIfKO _                 -> error "AddBoostIfKO"
@@ -537,7 +543,6 @@ runEffect env@MoveEnv {..} eff = do
     SwapItem                       -> error "SwapItem"
     DoublePwrInTerrain _           -> error "DoublePwrInTerrain"
     Octolock                       -> error "Octolock"
-    OdorSleuth                     -> error "OdorSleuth"
     PayDay                         -> error "PayDay"
     DoublePwrIfUserAttacked        -> error "DoublePwrIfUserAttacked"
     UseHighestOfAttSpA             -> error "UseHighestOfAttSpA"
@@ -550,13 +555,11 @@ runEffect env@MoveEnv {..} eff = do
     Punishment                     -> error "Punishment"
     Purify                         -> error "Purify"
     Pursuit                        -> error "Pursuit"
-    QuickGuard                     -> error "QuickGuard"
     Rage                           -> error "Rage"
     RageFist                       -> error "RageFist"
     RagingBull                     -> error "RagingBull"
     RagingFury                     -> error "RagingFury"
     Recycle                        -> error "Recycle"
-    Refresh                        -> error "Refresh"
     SleepFor2Turns                 -> error "SleepFor2Turns"
     DoubleDmgIfAllyFaintedLastTurn -> error "DoubleDmgIfAllyFaintedLastTurn"
     ReviveAllyToHalfHP             -> error "ReviveAllyToHalfHP"
@@ -579,7 +582,6 @@ runEffect env@MoveEnv {..} eff = do
     FailIfNotAsleep                -> error "FailIfNotAsleep"
     Snowscape                      -> error "Snowscape"
     ChargeIfNotSun                 -> error "ChargeIfNotSun"
-    HealBurn                       -> error "HealBurn"
     StealStatBoosts                -> error "StealStatBoosts"
     Spite                          -> error "Spite"
     SpringtideStorm                -> error "SpringtideStorm"
@@ -602,6 +604,11 @@ runEffect env@MoveEnv {..} eff = do
     WeatherBall                    -> error "WeatherBall"
     WringOut                       -> error "WringOut"
     Feint                          -> error "Feint"
+    IfUserHit _                    -> error "IfUserHit"
+
+    HealBurn -> case targ.pokemon.status of
+      Just Pok.Burn -> putTargetStatus env Nothing
+      _             -> pure ()
 
     Stockpile -> putTarget targ { stockpiles = min 3 $ succ targ.stockpiles }
     SpitUp    -> error "SpitUp"
@@ -620,19 +627,22 @@ runEffect env@MoveEnv {..} eff = do
     LaserFocus      -> putTarget targ { focused     = True }
     DefenceCurlUsed -> putTarget targ { defenceCurl = True }
     Snatch          -> putTarget targ { snatching   = True }
+    OdorSleuth      -> putTarget targ { odorSleuth  = True }
     MagnetRise      -> putTarget targ { magnetRise  = 5 }
     Telekinesis     -> putTarget targ { telekinesis = 3 }
     DestinyBond     -> putTarget targ { destinyBond = 1 }
     HealBlock       -> putTarget targ { healBlock   = 5 }
     Taunt           -> putTarget targ { taunt       = 3 } -- four turns if target acted before the user
     Embargo         -> putTarget targ { embargo     = 3 }
+    QuickGuard      -> editLane2 \l -> l { quickGuard = True }
     Safeguard       -> editLane2 \l -> l { safeguard  = 3 }
     Tailwind        -> editLane2 \l -> l { tailwind   = 3 }
     WaterSport      -> editField \f -> f { waterSport = 5 }
     MudSport        -> editField \l -> l { mudSport   = 5 }
     ClearTerrain    -> editField \f -> f { terrain    = Nothing }
 
-    UserDies  -> putUser user { pokemon = user.pokemon { hp = 0 } }
+    Recharge -> putUser user { recharge = 2 }
+    UserDies -> putUser user { pokemon  = user.pokemon { hp = 0 } }
 
 ----
 

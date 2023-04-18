@@ -13,6 +13,7 @@ import System.Random.Shuffle
 import Data.Text qualified as Text
 import Control.Monad.State
 import Data.Word
+import Data.List qualified as L
 
 type ID  = Int
 type UID = Int -- unique ID
@@ -172,4 +173,20 @@ addEVs add mon = mon { evs = execState go mon.evs } where
     modify \evs -> evs { spA = min 252 $ evs.spA + min (510 - sum evs) add.spA, hp =evs.hp  }
     modify \evs -> evs { spD = min 252 $ evs.spD + min (510 - sum evs) add.spD, hp =evs.hp  }
     modify \evs -> evs { spe = min 252 $ evs.spe + min (510 - sum evs) add.spe, hp =evs.hp  }
+
+levelUpMoves :: PokeAPI -> Pokemon -> [Move]
+levelUpMoves api pok =
+  filter (\m -> m.id `L.notElem` mids) $
+  mapMaybe (\pm -> getMoveByName api pm.move.name)
+    $ mon.moves & filter \pm ->
+        pm.version_group_details & any \pmv ->
+          pmv.level_learned_at <= pok.level &&
+          pmv.move_learn_method.name == "level-up"
+  where
+    Just mon = IM.lookup pok.id api.pokemon
+
+    mids = map (.id) pok.moves
+
+levelUpEvolution :: PokeAPI -> Pokemon -> Maybe Pokemon
+levelUpEvolution api pok = Nothing
 

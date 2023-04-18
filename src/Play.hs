@@ -66,15 +66,15 @@ initialWorld = do
 
   api <- API.getPokeAPI
 
-  mon1 <- createPokemon settings 0 api 1 (5, 5)
+  mon1 <- createPokemon settings 0 api 1 (15, 15)
   mon2 <- createPokemon settings 1 api 4 (5, 5)
   mon3 <- createPokemon settings 2 api 7 (5, 5)
 
   Just (h, w) <- getTerminalSize
   let world = World
         { wm             = worldMap
-        , pl             = Pos 4 (V2 4 3)
-        -- , pl             = Pos 7 (V2 20 10)
+        -- , pl             = Pos 4 (V2 4 3)
+        , pl             = Pos 7 (V2 20 10)
         , menuCursor     = 0
         , twidth         = w
         , theight        = h
@@ -476,7 +476,9 @@ encounter table = do
       set <- gets settings
       uid <- getUnique
       mon <- createPokemon set uid api pid lvl
+      oldParty <- gets party
       battle mon
+      newParty <- gets party
       modify \w -> w
         { encounterGraze = encounterCooldown
         }
@@ -484,11 +486,31 @@ encounter table = do
 battle (mon :: Pokemon) = do
   World {..} <- get
   let b = Battle.newBattle api party [mon] True
+
+  let oldParty = party
   Battle.runBattle b
+  newParty <- gets (.party)
 
   -- give back held items
   when settings.keepItems do
     modify \w -> w { party = restoreHeldItems party w.party }
+
+  -- Level-Up evolutions
+  newParty' <- forM newParty \mon2 -> do
+    if oldParty & any \mon1 -> mon1.uid == mon2.uid && mon1.level < mon2.level
+       then evolutionCheck mon2
+       else pure mon2
+
+  modify \w -> w { party = newParty' }
+
+evolutionCheck mon1 = do
+  World {..} <- get
+  case levelUpEvolution api mon1 of
+    Nothing -> pure mon1
+    Just mon2 -> runDialogue do
+      say $ "Evolve " <> pokemonName api mon1 <> "?"
+      noyes (pure mon1) do
+        pure mon2
 
 restoreHeldItems old0 new0 = foldr go new0 old0 where
   go old news
