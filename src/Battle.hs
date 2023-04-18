@@ -235,6 +235,7 @@ tickTurnMon mon = mon
   , flinched    = False
   , snatching   = False
   , drowsy      = False
+  , quashed     = False
   , taunt       = max 0 $ pred mon.taunt
   , torment     = max 0 $ pred mon.torment
   , healBlock   = max 0 $ pred mon.healBlock
@@ -243,6 +244,7 @@ tickTurnMon mon = mon
   , embargo     = max 0 $ pred mon.embargo
   , destinyBond = max 0 $ pred mon.destinyBond
   , magnetRise  = max 0 $ pred mon.magnetRise
+  , telekinesis = max 0 $ pred mon.telekinesis
   , perishCount = mon.perishCount <&> pred
   , encore = case mon.encore of
       Nothing      -> Nothing

@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -Wincomplete-patterns #-}
 module Battle.Move where
 
 import Pokemon.Move as Move
@@ -545,7 +546,7 @@ runEffect env@MoveEnv {..} eff = do
 
     IonDeluge -> error "IonDeluge"
     NoSwitchUserAndTarget -> error "NoSwitchUserAndTarget"
-    Judgement -> error "Judgement"
+    Judgment -> error "Judgement"
     JungleHealing -> error "JungleHealing"
     LaserFocus -> putTarget targ { focused = True }
     DoublePwrIfUserDebuff -> error "DoublePwrIfUserDebuff"
@@ -582,6 +583,89 @@ runEffect env@MoveEnv {..} eff = do
           { hp = max 0 $ targ.pokemon.hp - div targ.stats.hp 4
           }
         }
+
+    Uproar -> error "Uproar"
+    MoveStatus -> error "MoveStatus"
+    CopyType -> error "CopyType"
+    SwapOffDef -> error "SwapOffDef"
+    SwpSpe -> error "SwpSpe"
+    DoublePwrIfTargetPoison -> error "DoublePwrIfTargetPoison"
+    IfUserHitByContactMove _ -> error "IfUserHitByContactMove"
+    SwapItem -> error "SwapItem"
+    DoublePwrInTerrain _ -> error "DoublePwrInTerrain"
+    Octolock -> error "Octolock"
+    OdorSleuth -> error "OdorSleuth"
+    PayDay -> error "PayDay"
+    DoublePwrIfUserAttacked -> error "DoublePwrIfUserAttacked"
+    UseHighestOfAttSpA -> error "UseHighestOfAttSpA"
+    PwrHighBond -> error "PwrHighBond"
+    PollenPuff -> error "PollenPuff"
+    Poltergeist -> error "Poltergeist"
+    Powder -> error "Powder"
+    Present -> error "Present"
+    Psywave -> error "Psywave"
+    Punishment -> error "Punishment"
+    Purify -> error "Purify"
+    Pursuit -> error "Pursuit"
+    Quash -> putTarget targ {quashed=True}
+    QuickGuard -> error "QuickGuard"
+    Rage -> error "Rage"
+    RageFist -> error "RageFist"
+    RagingBull -> error "RagingBull"
+    RagingFury -> error "RagingFury"
+    Recycle -> error "Recycle"
+    Refresh -> error "Refresh"
+    SleepFor2Turns -> error "SleepFor2Turns"
+    DoubleDmgIfAllyFaintedLastTurn -> error "DoubleDmgIfAllyFaintedLastTurn"
+    ReviveAllyToHalfHP -> error "ReviveAllyToHalfHP"
+    GroundFor1Turn -> error "GroundFor1Turn"
+    Rototiller -> error "Rototiller"
+    Round -> error "Round"
+    SaltCure -> error "SaltCure"
+    SecretPower -> error "SecretPower"
+    ShedTail -> error "ShedTail"
+    ShellSideArm -> error "ShellSideArm"
+    ShellTrap -> error "ShellTrap"
+    ShoreUp -> error "ShoreUp"
+    Sketch -> error "Sketch"
+    SkyDrop -> error "SkyDrop"
+    HitInvul _ -> error "HitInvul"
+    SleepTalk -> error "SleepTalk"
+    GroundFlying -> error "GroundFlying"
+    SmellingSalts -> error "SmellingSalts"
+    IgnoreFollowMe -> error "IgnoreFollowMe"
+    FailIfNotAsleep -> error "FailIfNotAsleep"
+    Snowscape -> error "Snowscape"
+    ChargeIfNotSun -> error "ChargeIfNotSun"
+    HealBurn -> error "HealBurn"
+    StealStatBoosts -> error "StealStatBoosts"
+    SpitUp -> error "SpitUp"
+    Swallow -> error "Swallow"
+    Stockpile -> error "Stockpile"
+    Spite -> error "Spite"
+    SpringtideStorm -> error "SpringtideStorm"
+    DoublePwrIfLastMoveFailed -> error "DoublePwrIfLastMoveFailed"
+    StrengthSap -> error "StrengthSap"
+    SuckerPunch -> error "SuckerPunch"
+    Synchronoise -> error "Synchronoise"
+    TarShot -> putTarget targ { tarShot=True }
+    TechnoBlast -> error "TechnoBlast"
+    Telekinesis -> putTarget targ {telekinesis=3}
+    TeraBlast -> error "TeraBlast"
+    TerrainPulse -> error "TerrainPulse"
+    TroatChop -> error "TroatChop"
+    PerfectAccuracyInWeather _ -> error "PerfectAccuracyInWeather"
+    RemoveSubstitute -> error "RemoveSubstitute"
+    TripleAxel -> error "TripleAxel"
+    TripleKick -> error "TripleKick"
+    TrumpCard -> error "TrumpCard"
+    Transform -> error "Transform"
+    Torment -> error "Torment"
+    VenomDrench -> error "VenomDrench"
+    WakeUpSlap -> error "WakeUpSlap"
+    WaterSport -> editField \f -> f { waterSport=5 }
+    WeatherBall -> error "WeatherBall"
+    WringOut -> error "WringOut"
 
 ----
 

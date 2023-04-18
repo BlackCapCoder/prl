@@ -60,6 +60,9 @@ data BattleMon = BattleMon
    , miracleEye  :: Bool
    , mist        :: Bool -- can be passed with baton pass
    , protections :: Int  -- consequtive turns having used protection moves
+   , quashed     :: Bool
+   , tarShot     :: Bool
+   , telekinesis :: Countdown -- Telekinesis has lots of rules- check bulbapedia!
    }
 
 newBattleMon api pok = BattleMon
@@ -109,6 +112,9 @@ newBattleMon api pok = BattleMon
   , miracleEye  = False
   , mist        = False
   , protections = 0
+  , quashed     = False
+  , tarShot     = False
+  , telekinesis = 0
   }
 
 ----
@@ -121,6 +127,7 @@ data Field = Field
    , magicRoom    :: Countdown
    , wonderRoom   :: Countdown
    , mudSport     :: Countdown
+   , waterSport   :: Countdown
    , gravity      :: Countdown
    }
 
@@ -132,8 +139,9 @@ newField = Field
   , trickRoom  = 0
   , magicRoom  = 0
   , wonderRoom = 0
-  , mudSport   = 0
   , gravity    = 0
+  , mudSport   = 0
+  , waterSport = 0
   }
 
 
