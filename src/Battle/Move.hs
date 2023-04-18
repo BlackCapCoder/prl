@@ -395,7 +395,7 @@ runEffect env@MoveEnv {..} eff = do
         , pokemon = targ.pokemon { hp = targ.pokemon.hp - health }
         }
 
-    IgnoreProtect _ -> error "IgnoreProtect"
+    IgnoreProtect -> error "IgnoreProtect"
 
     Endure -> putTarget targ
       { enduring = True }
@@ -666,6 +666,7 @@ runEffect env@MoveEnv {..} eff = do
     WaterSport -> editField \f -> f { waterSport=5 }
     WeatherBall -> error "WeatherBall"
     WringOut -> error "WringOut"
+    Feint -> error "Feint"
 
 ----
 
