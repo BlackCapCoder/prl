@@ -180,7 +180,7 @@ levelUpMoves api pok =
   mapMaybe (\pm -> getMoveByName api pm.move.name)
     $ mon.moves & filter \pm ->
         pm.version_group_details & any \pmv ->
-          pmv.level_learned_at <= pok.level &&
+          pmv.level_learned_at == pok.level &&
           pmv.move_learn_method.name == "level-up"
   where
     Just mon = IM.lookup pok.id api.pokemon
@@ -188,5 +188,31 @@ levelUpMoves api pok =
     mids = map (.id) pok.moves
 
 levelUpEvolution :: PokeAPI -> Pokemon -> Maybe Pokemon
-levelUpEvolution api pok = Nothing
+levelUpEvolution api pok = do
+  mon <- IM.lookup pok.id api.pokemon
+  spe <- getSpeciesByName api mon.species.name
+
+  (spe_name, lvl) <- listToMaybe
+    [ (e.species.name, lvl)
+    | evo <- toList api.evolutions
+    , c <- evo.chain & fix \loop c -> c : (loop =<< c.evolves_to)
+    , c.species.name == spe.name
+    , e <- c.evolves_to
+    , [d] <- pure e.evolution_details
+    , d.trigger.name == "level-up"
+    , Just lvl <- pure $ d.min_level
+    ]
+
+  guard $ pok.level >= lvl
+
+  mon <- listToMaybe
+    [ mon
+    | mon <- toList api.pokemon
+    , mon.species.name == spe_name
+    ]
+
+  pure pok
+    { id    = mon.id
+    , level = pok.level
+    }
 

@@ -862,7 +862,7 @@ giveExp = do
   World.World {..} <- lift get
   Battle {..} <- get
   when (mon1.pokemon.level < 100) do
-  exp <- round <$> getExpGain
+  exp <- (*100) . round <$> getExpGain
   tell $ pokemonName api mon1.pokemon <> " gained " <> show exp <> " Exp"
 
   let Just pok = IM.lookup mon1.pokemon.id api.pokemon
