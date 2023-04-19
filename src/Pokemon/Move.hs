@@ -29,7 +29,7 @@ data Move = Move
    , pow     :: Word8  -- The base power (BP) of a move
    , acc     :: Word8  -- probability of the move hitting the target (0=Always /= 100 due to evasion)
    , crit    :: Word8  -- 1="high crit chance", alwaysCrit="always crits"
-   , hits    :: (Word8,Word8)  -- Number of times to perform the move, between 2 and N (N if N<2)
+   , hits    :: (Word8,Word8) -- Number of times to perform the move
    , pri     :: Int8   -- Priority bracket. In each bracket, faster pokemon attack first (unless trick room)
    , flags   :: FLAGS
    , targ    :: Target -- The target(s) of the move
@@ -66,7 +66,7 @@ pattern WIDE     = 0b0000001 :: Target -- hit all targets if set, otherwise choo
 #define ALL_ALLIES ALLIES .|. SELF .|. WIDE
 #define USER_AND_ALLIES ALLIES .|. SELF .|. WIDE
 
--- Fields
+-- Flags
 --
 pattern DANCE    = 0b1                    :: FLAGS -- dance moves are copied by pokemon with dancer
 pattern SOUND    = 0b10                   :: FLAGS -- pokemon with soundproof are immune
@@ -89,7 +89,7 @@ pattern IGNPROT  = 0b100000000000000000   :: FLAGS -- move ignores protect
 pattern IGNBOOST = 0b1000000000000000000  :: FLAGS -- move ignores target's boosts
 pattern IGNABI   = 0b10000000000000000000 :: FLAGS -- move ignores target's ability
 
--- TODO: Most (but not all) moves are affected mirror move
+-- TODO: Most (but not all) moves are affected by mirror move
 -- List here: https://pokemon.fandom.com/wiki/Category:Moves_affected_by_Mirror_Move
 
 infixr 5 :%

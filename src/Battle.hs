@@ -33,6 +33,8 @@ import Data.List qualified as L
 import StyledString
 import Data.Vector qualified as V
 import Data.Text qualified as T
+import Data.IntSet qualified as IS
+import Control.Monad.Except
 
 ----
 
@@ -108,6 +110,7 @@ mainLoop = do
       when continue endOfTurn
 
     Nothing -> do
+      modify \b -> b { mon1 = b.mon1 { hasMoved = True } }
       pause
       swapField
       res2 <- handleBattleAction foeAction True
@@ -187,8 +190,8 @@ forcedSwitch = do
 
 endOfTurn = do
   Battle {mon1,mon2} <- get
-  mon1' <- tickDrowsy mon1
-  mon2' <- tickDrowsy mon2
+  mon1' <- tickDrowsy mon1 >>= tickOutrage
+  mon2' <- tickDrowsy mon2 >>= tickOutrage
 
   modify \Battle {..} -> Battle
     { mon1 = tickTurnMon $ tickCurse mon1'
@@ -230,6 +233,12 @@ tickCurse mon
       }
     }
 
+tickOutrage mon
+  | mon.outraged == 1 && not mon.flinched && mon.confusion == -1
+  = do turns <- liftIO $ randomRIO (2, 3)
+       pure mon { confusion = turns }
+  | let = pure mon
+
 tickTurnMon mon = mon
   { enduring    = False
   , protected   = False
@@ -238,6 +247,7 @@ tickTurnMon mon = mon
   , snatching   = False
   , drowsy      = False
   , quashed     = False
+  , hasMoved    = False
   , taunt       = max 0 $ pred mon.taunt
   , healBlock   = max 0 $ pred mon.healBlock
   , luckyChant  = max 0 $ pred mon.luckyChant
@@ -247,6 +257,7 @@ tickTurnMon mon = mon
   , magnetRise  = max 0 $ pred mon.magnetRise
   , telekinesis = max 0 $ pred mon.telekinesis
   , partialTrap = max 0 $ pred mon.partialTrap
+  , outraged    = max 0 $ pred mon.outraged
   , perishCount = mon.perishCount <&> pred
   , encore = case mon.encore of
       Nothing      -> Nothing
@@ -338,7 +349,7 @@ handleBattleAction act opp = do
       pure Nothing
 
     UseMove move -> do
-      performMove move opp
+      performMove' move opp
       Battle {..} <- get
 
       pure if
@@ -474,22 +485,36 @@ selectSwitch canCancel = do
 
 ----
 
-performMove move opp = do
-  World.World {..} <- lift get
+-- Like performMove, but handle things that might prevent the move first
+--
+performMove' move opp = void $ runExceptT do
+  World.World {..} <- lift $ lift get
   Battle {..} <- get
 
   let prefix | opp = "The opposing " | let = ""
 
+  let say msg = tell $ prefix <> pokemonName api mon1.pokemon <> " " <> msg
+  let err msg = say msg *> throwError ()
+
   -- flinch
-  if mon1.flinched
-  then do
-    tell $ prefix <> pokemonName api mon1.pokemon <> " flinched and couldn't move!"
-  else do
+  when (mon1.flinched) do
+    err "flinched and couldn't move!"
 
   -- statuses that might prevent the move
   case mon1.pokemon.status of
     Just (Sleep n)
-      | n < 2 -> do
+      | n >= 2 -> do
+        put Battle
+          { mon1 = mon1
+            { pokemon = mon1.pokemon
+              { status = Just (Sleep (pred n))
+              }
+            }
+          , ..
+          }
+        err "is fast asleep"
+
+      | otherwise -> do
         put Battle
           { mon1 = mon1
             { pokemon = mon1.pokemon
@@ -498,26 +523,12 @@ performMove move opp = do
             }
           , ..
           }
-        tell $ prefix <> pokemonName api mon1.pokemon <> " woke up!"
-        performMove' move opp
-      | let -> do
-          -- TODO: sleep talk, snore
-          put Battle
-            { mon1 = mon1
-              { pokemon = mon1.pokemon
-                { status = Just (Sleep (pred n))
-                }
-              }
-            , ..
-            }
-          tell $ prefix <> pokemonName api mon1.pokemon <> " is fast asleep"
+        say "woke up!"
 
     Just Paralysis -> do
       roll <- liftIO $ randomRIO (0.0, 1.0)
-      if roll <= settings.paralysisChance then do
-        tell $ prefix <> pokemonName api mon1.pokemon <> " couldn't move because it's paralyzed!"
-      else do
-        performMove' move opp
+      when (roll <= settings.paralysisChance) do
+        err "couldn't move because it's paralyzed!"
 
     Just Freeze -> do
       thawRoll <- liftIO $ randomRIO (0.0, 1.0)
@@ -525,75 +536,70 @@ performMove move opp = do
       -- TODO: Moves that unfreeze the user
       let thaw = thawRoll <= settings.thawChance
 
-      if not thaw then do
-        tell $ prefix <> pokemonName api mon1.pokemon <> " is frozen"
-      else do
+      unless thaw do
+        err "is frozen"
+
+      put Battle
+        { mon1 = mon1
+          { pokemon = mon1.pokemon
+            { status = Nothing
+            }
+          }
+        , ..
+        }
+      say "thawed!"
+
+    _ -> pure ()
+
+  Battle {..} <- get
+
+  -- confusion
+  case compare mon1.confusion 0 of
+    LT -> pure ()
+    EQ -> do
+      put Battle { mon1 = mon1 { confusion = -1 }, .. }
+      say "snapped out of its confusion"
+    GT -> do
+      put Battle { mon1 = mon1 { confusion = mon1.confusion - 1 }, .. }
+      say "is confused"
+      roll <- liftIO $ randomRIO (0.0, 1.0)
+
+      when (roll <= settings.confusionChance) do
+        let att = fi mon1.stats.att * boostMult mon1.boosts.att
+        let def = fi mon1.stats.def * boostMult mon1.boosts.def
+        let dmg = max 1 $ round $ damageBase mon1.pokemon.level 40 (round att) (round def)
+
         put Battle
           { mon1 = mon1
             { pokemon = mon1.pokemon
-              { status = Nothing
+              { hp = max 0 $ mon1.pokemon.hp - dmg
+              , level = mon1.pokemon.level
               }
             }
           , ..
           }
-        tell $ prefix <> pokemonName api mon1.pokemon <> " thawed!"
-        performMove' move opp
-
-    _ -> performMove' move opp
-
-performMove' move opp = do
-  World.World {..} <- lift get
-  Battle {..} <- get
-
-  let prefix | opp = "The opposing " | let = ""
-
-  -- confusion
-  case compare mon1.confusion 0 of
-    LT -> performMove'' move opp
-    EQ -> do
-      put Battle { mon1 = mon1 { confusion = -1 }, .. }
-      tell $ prefix <> pokemonName api mon1.pokemon <> " snapped out of its confusion"
-      performMove'' move opp
-    GT -> do
-      put Battle { mon1 = mon1 { confusion = mon1.confusion - 1 }, .. }
-      tell $ prefix <> pokemonName api mon1.pokemon <> " is confused " <> show mon1.confusion
-      roll <- liftIO $ randomRIO (0.0, 1.0)
-      if roll <= settings.confusionChance then do
-        tell $ prefix <> pokemonName api mon1.pokemon <> " hit itself in its confusion!"
-        confusionHit
-      else do
-        performMove'' move opp
-
-confusionHit = do
-
-  -- This incorrectly respect things like reflect and attack-boosting abilities
-  --
-  -- modify \w -> w { mon1 = w.mon2, mon2 = w.mon1 }
-  -- runBasicAttackResult =<< basicAttack struggleID NON True 40 mon1 mon1 True
-  -- modify \w -> w { mon1 = w.mon2, mon2 = w.mon1 }
-
-  Battle {..} <- get
-
-  let att = fi mon1.stats.att * boostMult mon1.boosts.att
-  let def = fi mon1.stats.def * boostMult mon1.boosts.def
-  let dmg = max 1 $ round $ damageBase mon1.pokemon.level 40 (round att) (round def)
-
-  put Battle
-    { mon1 = mon1
-      { pokemon = mon1.pokemon
-        { hp = max 0 $ mon1.pokemon.hp - dmg
-        }
-      }
-    , ..
-    }
-
-performMove'' move opp = do
-  World.World {..} <- lift get
-  Battle {..} <- get
-
-  let prefix | opp = "The opposing " | let = ""
+        err "hit itself in its confusion!"
 
   -- attract
+  when (IS.member mon2.pokemon.uid mon1.attraction) do
+    roll <- liftIO randomIO
+    when roll $ err "was immobilized by love"
+
+  -- accuracy
+  move.accuracy & maybe (pure ()) \acc -> do
+    roll <- liftIO $ randomRIO (0, 99)
+    when (roll >= acc) do
+      tell "but it missed.."
+      throwError ()
+
+  -- actually perform the move
+  lift $ performMove move opp
+
+performMove move opp = do
+  World.World {..} <- lift get
+  Battle {..} <- get
+
+  let prefix | opp = "The opposing " | let = ""
 
   let Just m = IM.lookup move.id api.moves
   tell $ prefix <> pokemonName api mon1.pokemon <> " used " <> Text.unpack (moveName m)

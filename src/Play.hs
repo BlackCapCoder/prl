@@ -32,7 +32,7 @@ import Data.IntMap             qualified as IM
 import Data.Map                qualified as M
 import Data.Text               qualified as Text
 import StyledString
-import Data.List (intercalate, intersperse)
+import Data.List (intercalate, intersperse, elem)
 
 import Data.Vector         qualified as V
 import Data.Vector.Mutable qualified as MV
@@ -508,9 +508,41 @@ evolutionCheck mon1 = do
   case levelUpEvolution api mon1 of
     Nothing -> pure mon1
     Just mon2 -> runDialogue do
-      say $ "Evolve " <> pokemonName api mon1 <> "?"
+      let Just pok = IM.lookup mon2.id api.pokemon
+      say $ "Evolve " <> pokemonName api mon1 <> " into " <> Text.unpack pok.name <> "?"
       noyes (pure mon1) do
-        pure mon2
+        nag $ pokemonName api mon1 <> " evolved into " <> Text.unpack pok.name <> "!"
+        foldM go mon2 $ levelUpMoves api mon2
+      where
+        go mon mov
+          | mov.id `elem` map (.id) mon.moves = pure mon
+          | length mon.moves <= 4 = pure mon { moves = mon.moves ++ [pmove] }
+          | let = do
+              say $ concat
+                [ pokemonName api mon
+                , " wants to learn "
+                , Text.unpack mov.name
+                , ", but it already knows 4 moves"
+                ]
+              c <- choose $ zip (mapMaybe moveName mon.moves) [0..]
+              case c of
+                Nothing -> pure mon
+                Just i  -> pure mon { moves = replaceAt i pmove mon.moves }
+          where
+            pmove = PokemonMove
+              { id     = mov.id
+              , pp_ups = 0
+              , pp     = mov.pp
+              }
+
+            moveName pm = do
+              m <- IM.lookup pm.id api.moves
+              pure $ Text.unpack m.name
+
+replaceAt i new = go i where
+  go 0 (_:xs) = new : xs
+  go n (x:xs) = x : go (pred n) xs
+  go _ _ = []
 
 restoreHeldItems old0 new0 = foldr go new0 old0 where
   go old news

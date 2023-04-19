@@ -68,6 +68,9 @@ data BattleMon = BattleMon
    , stockpiles  :: Int
    , recharge    :: Countdown -- skip turn unless 0
    , odorSleuth  :: Bool
+   , outraged    :: Countdown -- user is locked into performing their most recent move
+                              -- for N more turns, then become confused
+   , hasMoved    :: Bool -- has moved yet this turn
    }
 
 newBattleMon api pok = BattleMon
@@ -124,6 +127,8 @@ newBattleMon api pok = BattleMon
   , stockpiles  = 0
   , recharge    = 0
   , odorSleuth  = False
+  , outraged    = 0
+  , hasMoved    = False
   }
 
 ----
