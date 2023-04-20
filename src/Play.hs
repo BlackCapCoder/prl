@@ -2,6 +2,7 @@
 module Play where
 
 import Map
+import MapParser qualified
 import Tile
 import V2
 import World
@@ -64,6 +65,8 @@ eggTickFreq = 10
 initialWorld = do
   let settings = defaultSettings
 
+  wm <- MapParser.parseMapFile "johto"
+
   api <- API.getPokeAPI
 
   mon1 <- createPokemon settings 0 api 1 (15, 15)
@@ -72,10 +75,11 @@ initialWorld = do
 
   Just (h, w) <- getTerminalSize
   let world = World
-        { wm             = worldMap
+        { wm             = wm -- worldMap
         -- , pl             = Pos 4 (V2 4 3)
         -- , pl             = Pos 7 (V2 20 10)
-        , pl             = Pos 13 (V2 50 10)
+        -- , pl             = Pos 13 (V2 50 10)
+        , pl             = Pos 0 (V2 10 10)
         , menuCursor     = 0
         , twidth         = w
         , theight        = h

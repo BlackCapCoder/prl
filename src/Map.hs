@@ -22,6 +22,11 @@ placeMap x y a m
   | x < 0 || y < 0 || x >= width m || y >= height m = m
   | let = m { content = content m `V.update` V.fromList [(y*width m + x, a)] }
 
+placeMap' x y f m
+  | x < 0 || y < 0 || x >= width m || y >= height m = m
+  | let i = y*width m + x
+  = m { content = content m `V.update` V.fromList [(i, f (content m V.! i))] }
+
 ----
 
 data Maps a = Maps
