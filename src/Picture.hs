@@ -59,6 +59,7 @@ data Style
 --
 data Picture
    = Blank
+   | Filled FILL
    | Fill (Perhaps Char) (Perhaps Style) (Perhaps Color) (Perhaps Color) Picture
    | Pictures [Picture]
    | Rotate Float Picture
@@ -87,6 +88,7 @@ toF :: Picture -> F FILL
 toF = go mempty where
   go fill = \case
     Blank              -> empty
+    Filled a           -> pure a
     Pictures ps        -> foldr (\a x -> x <> go fill a) mempty ps
     Fill chr s fg bg p -> go (fill <> (chr, s, fg, bg)) p
     Rotate deg p       -> rotateF (-deg * pi/180) $ go fill p

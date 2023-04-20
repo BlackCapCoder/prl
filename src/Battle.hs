@@ -15,6 +15,7 @@ import Pokemon.Type as TYPE
 import Pokemon.Stat
 import Pokemon.Level
 import Pokemon.Move qualified as Pok
+import Dialogue
 import Settings
 import System.Random
 import Prelude hiding (Field)
@@ -230,6 +231,7 @@ tickCurse mon
   | otherwise      = mon
     { pokemon = mon.pokemon
       { hp = max 0 $ mon.pokemon.hp - max 1 (div mon.stats.hp 4)
+      , level = mon.pokemon.level
       }
     }
 
@@ -487,7 +489,7 @@ selectSwitch canCancel = do
 
 -- Like performMove, but handle things that might prevent the move first
 --
-performMove' move opp = void $ runExceptT do
+performMove' move opp = runExceptT do
   World.World {..} <- lift $ lift get
   Battle {..} <- get
 
@@ -503,7 +505,7 @@ performMove' move opp = void $ runExceptT do
   -- statuses that might prevent the move
   case mon1.pokemon.status of
     Just (Sleep n)
-      | n >= 2 -> do
+      | n >= 1 -> do
         put Battle
           { mon1 = mon1
             { pokemon = mon1.pokemon
@@ -585,10 +587,18 @@ performMove' move opp = void $ runExceptT do
     roll <- liftIO randomIO
     when roll $ err "was immobilized by love"
 
+  -- announce move
+  let Just m = IM.lookup move.id api.moves
+  say $ "used " <> Text.unpack (moveName m)
+
   -- accuracy
-  move.accuracy & maybe (pure ()) \acc -> do
-    roll <- liftIO $ randomRIO (0, 99)
-    when (roll >= acc) do
+  move.accuracy & maybe (pure ()) \acc_move -> do
+    let adj_stage = boostMult $ max (-6) . min 6 $ mon1.boosts.acc - mon2.boosts.eva
+    let acc = round $ fi acc_move * adj_stage
+
+    roll <- liftIO $ randomRIO (1, 100)
+
+    when (roll > acc) do
       tell "but it missed.."
       throwError ()
 
@@ -599,12 +609,10 @@ performMove move opp = do
   World.World {..} <- lift get
   Battle {..} <- get
 
-  let prefix | opp = "The opposing " | let = ""
-
-  let Just m = IM.lookup move.id api.moves
-  tell $ prefix <> pokemonName api mon1.pokemon <> " used " <> Text.unpack (moveName m)
-
   modifyMove move \m -> m { pp = max 0 (pred m.pp) }
+
+  let prefix | opp = "The opposing " | let = ""
+  let Just m = IM.lookup move.id api.moves
 
   case move2moveDesc move of
     Just md -> do
@@ -682,15 +690,19 @@ selectRandomMove mon = do
 
 ----
 
-drawBattle cur opts = do
+drawBattle cur opts =
+  draw =<< battlePic cur opts
+
+battlePic cur opts = do
   World.World {..} <- lift get
   Battle {..} <- get
 
   let (w1, info1) = monInfo api False healthBarWidth mon2
   let (w2, info2) = monInfo api True  healthBarWidth mon1
 
-  draw $ Pictures
-    [ info1
+  pure $ Pictures
+    [ Filled mempty
+    , info1
     , Translate (fi (twidth-w2)) 2 info2
     , Translate 0 4
     $ battleMenuPic twidth cur opts
@@ -917,13 +929,41 @@ onLevelUp = do
   forM_ ms \m -> do
     Battle {..} <- get
     if length mon1.pokemon.moves == 4 then do
-      tell $ concat
-        [ pokemonName api mon1.pokemon
-        , " wants to learn "
-        , T.unpack (moveName m)
-        , ", but it already knows 4 moves"
-        ]
-      pure ()
+      bg <- battlePic 0 []
+      m <- lift $ runDialogue bg do
+        nag $ concat
+          [ pokemonName api mon1.pokemon
+          , " wants to learn "
+          , T.unpack $ moveName m
+          , ", but it already knows 4 moves"
+          ]
+        say $ concat
+          [ "Replace a move with "
+          , T.unpack $ moveName m
+          , "?"
+          ]
+        let moveName pm = do
+              m <- IM.lookup pm.id api.moves
+              pure $ Text.unpack m.name
+        c <- choose $ zip (mapMaybe moveName mon1.pokemon.moves) [0..]
+        case c of
+          Nothing -> pure (pure ())
+          Just i  -> pure do
+            put Battle
+              { mon1 = mon1
+                { pokemon = mon1.pokemon
+                  { moves = replaceAt i
+                    PokemonMove
+                      { id     = m.id
+                      , pp_ups = 0
+                      , pp     = m.pp
+                      }
+                    mon1.pokemon.moves
+                  }
+                }
+              , ..
+              }
+      m
     else do
       put Battle
         { mon1 = mon1
@@ -940,6 +980,11 @@ onLevelUp = do
         , ..
         }
       tell $ pokemonName api mon1.pokemon <> " learned " <> T.unpack (moveName m) <> "!"
+  where
+    replaceAt i new = go i where
+      go 0 (_:xs) = new : xs
+      go n (x:xs) = x : go (pred n) xs
+      go _ _ = []
 
 ----
 

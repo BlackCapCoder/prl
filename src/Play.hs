@@ -74,7 +74,8 @@ initialWorld = do
   let world = World
         { wm             = worldMap
         -- , pl             = Pos 4 (V2 4 3)
-        , pl             = Pos 7 (V2 20 10)
+        -- , pl             = Pos 7 (V2 20 10)
+        , pl             = Pos 13 (V2 50 10)
         , menuCursor     = 0
         , twidth         = w
         , theight        = h
@@ -97,10 +98,12 @@ initialWorld = do
 (-->) = (,) ; infixr 0 -->
 
 initialNpcs = M.fromList
-  [ Pos 8 (V2 11 2) --> pokecenterDialogue
-  , Pos 9 (V2 4  2) --> pokemartDialogue
-  , Pos 5 (V2 3  6) --> nag "Hi there"
-  , Pos 3 (V2 9  2) --> oakDialogue
+  [ Pos 8  (V2 11 2) --> pokecenterDialogue
+  , Pos 14 (V2 11 2) --> pokecenterDialogue
+  , Pos 18 (V2 11 2) --> pokecenterDialogue
+  , Pos 9  (V2 4  2) --> pokemartDialogue
+  , Pos 5  (V2 3  6) --> nag "Hi there"
+  , Pos 3  (V2 9  2) --> oakDialogue
   ]
 
 ----
@@ -426,13 +429,17 @@ play' = do
 
   liftIO getOverworldInput >>= \case
     Quit     -> pure ()
-    OpenMenu -> runDialogue mainMenu *> play'
+    OpenMenu -> do
+      ow <- overworld
+      runDialogue ow mainMenu *> play'
     Test     -> test *> play'
     Move mx my -> do
       let pl' = Pos (mapID (pl w)) (pos (pl w) + V2 mx my)
 
       case M.lookup pl' (npcs w) of
-        Just d  -> runDialogue d
+        Just d  -> do
+          ow <- overworld
+          runDialogue ow d
         Nothing ->
           case lookupMaps (mapID pl') (x (pos pl')) (y (pos pl')) (wm w) of
             Just (Portal _ p) -> do
@@ -443,7 +450,9 @@ play' = do
               case t of
                 Grass -> walkedInGrass
                 _     -> tickSteps
-            Just PC -> runDialogue pcDialogue
+            Just PC -> do
+              ow <- overworld
+              runDialogue ow pcDialogue
             _ -> pure ()
 
       play'
@@ -505,9 +514,10 @@ battle (mon :: Pokemon) = do
 
 evolutionCheck mon1 = do
   World {..} <- get
+  ow <- overworld
   case levelUpEvolution api mon1 of
     Nothing -> pure mon1
-    Just mon2 -> runDialogue do
+    Just mon2 -> runDialogue ow do
       let Just pok = IM.lookup mon2.id api.pokemon
       say $ "Evolve " <> pokemonName api mon1 <> " into " <> Text.unpack pok.name <> "?"
       noyes (pure mon1) do
@@ -516,7 +526,7 @@ evolutionCheck mon1 = do
       where
         go mon mov
           | mov.id `elem` map (.id) mon.moves = pure mon
-          | length mon.moves <= 4 = pure mon { moves = mon.moves ++ [pmove] }
+          | length mon.moves < 4 = pure mon { moves = mon.moves ++ [pmove] }
           | let = do
               say $ concat
                 [ pokemonName api mon
@@ -585,7 +595,8 @@ tickEggs = do
     when (mon.eggCycles == 1) do
       let Just pok = IM.lookup mon.id api.pokemon
       let name     = Text.unpack pok.name
-      runDialogue $ nag $ "Your egg hatched into a " <> name <> "!"
+      ow <- overworld
+      runDialogue ow $ nag $ "Your egg hatched into a " <> name <> "!"
     pure mon { eggCycles = max 0 $ pred mon.eggCycles }
   put World {party = party', ..}
 
@@ -625,12 +636,13 @@ spad n (StyledString str) =
   StyledString str <> StyledString (replicate (n - length str) mempty)
 
 sstrMoves api mon cur1 cur2 =
-  "PP    typ cat pwr Move" : "" :
+  "PP    typ cat pwr acc Move" : "" :
     [ sty $ mconcat $ intersperse " "
       [ sstr $ pad 5 $ show move.pp <> "/" <> show info.pp
       , fg (typeColor ty) $ sshow ty
       , cat info.damage_class.name
-      , sstr $ pad 3 $ maybe "-" show info.power
+      , sstr $ pad 3 $ maybe "-"   show info.power
+      , sstr $ pad 3 $ maybe "inf" show info.accuracy
       , sstr $ Text.unpack $ info.name
       ]
     | move <- mon.moves

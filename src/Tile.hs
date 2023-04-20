@@ -16,6 +16,7 @@ data Tile
    | Chr Char
    | Portal Char Pos
    | Grass
+   | Water
    | PC
    deriving Show
 
@@ -23,6 +24,7 @@ isSolid = \case
   Empty -> False
   Solid -> True
   Wall  -> True
+  Water -> True
   PC    -> True
   _     -> False
 
@@ -34,6 +36,7 @@ toChar = \case
   Empty      -> ' '
   Solid      -> '#'
   Wall       -> '#'
+  Water      -> '~'
   PC         -> 'C'
   Chr c      -> c
   Portal c _ -> c
@@ -48,4 +51,5 @@ toFILL = \case
   Chr c -> (Set  c, None, None, None)
   Portal c _ -> (Set c, None, None, None)
   Grass -> (Set '\'', None, Set (RGB 0 255 0), None)
+  Water -> (Set '~',  None, Set (RGB 0 255 255), None)
 

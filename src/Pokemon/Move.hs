@@ -42,16 +42,17 @@ alwaysCrit = 4 -- crit
 
 -- Foe  Foe  Foe
 -- Self Ally Ally
--- Wide
+-- Wide Random
 type Target = Word8
 
-pattern SELF     = 0b0001000 :: Target
-pattern ADJACENT = 0b1100100 :: Target
-pattern ALL      = 0b1111110 :: Target
-pattern ADJFOES  = 0b1100000 :: Target
-pattern FOES     = 0b1110000 :: Target
-pattern ALLIES   = 0b0000110 :: Target
-pattern WIDE     = 0b0000001 :: Target -- hit all targets if set, otherwise choose one
+pattern SELF     = 0b00010000 :: Target
+pattern ADJACENT = 0b11001000 :: Target
+pattern ALL      = 0b11111100 :: Target
+pattern ADJFOES  = 0b11000000 :: Target
+pattern FOES     = 0b11100000 :: Target
+pattern ALLIES   = 0b00001100 :: Target
+pattern WIDE     = 0b00000010 :: Target -- hit all targets if set, otherwise choose one
+pattern RANDOM   = 0b00000001 :: Target -- select a target randomly
 
 #define ALLY ALLIES
 #define USERS_FIELD SELF
@@ -65,6 +66,7 @@ pattern WIDE     = 0b0000001 :: Target -- hit all targets if set, otherwise choo
 #define ALL_POKEMON ALL .|. WIDE
 #define ALL_ALLIES ALLIES .|. SELF .|. WIDE
 #define USER_AND_ALLIES ALLIES .|. SELF .|. WIDE
+#define RANDOM_OPPONENT ADJFOES .|. RANDOM
 
 -- Flags
 --
@@ -108,6 +110,8 @@ data Effect
    | LeechSeed
    | Yawn
    | PerishSong
+
+   | CurseGhost
 
    | Gravity
    | TrickRoom
@@ -866,8 +870,30 @@ moves =
       {ty=NOR, pow=75, acc=95, eff=50 :% AddBoost False zero {def= -1}, flags=CONTACT}
   , MoveDesc "Crush Grip" 5 tackle
       {ty=NOR, pow=0, eff=CrushGrip, flags=CONTACT .|. KROCK}
+
+  -- Curse is problematic in doubles, because the target depends on
+  -- the user's typing- which might change mid-turn- but the user
+  -- selects their target at the beginning of the turn.
+  --
+  -- As-of gen-8, the ghost-type curse targets a random opponent,
+  -- which simplifies things a lot since we don't require the user
+  -- to specify a target.
+  --
+  -- Before this the result was game-dependent and unique for every title.
+  --
+  -- Implementation:
+  -- - Curse (the move) targets the user and then calls either
+  --   Curse-ghost or Curse-non-ghost depending on the users typing
+  --   at the time of move-execution.
+  --
   , MoveDesc "Curse" 10 celebrate
-      {ty=GHO, eff=Curse, flags=IGNSUB}
+      {ty=GHO, eff=Curse, targ=SELF}
+
+  , MoveDesc "Curse-non-ghost" 0 celebrate
+      {ty=NOR, eff=AddBoost True zero {att=1,def=1,spe= -1}}
+  , MoveDesc "Curse-ghost" 0 celebrate
+      {ty=GHO, eff=CurseGhost, flags=IGNSUB, targ=RANDOM_OPPONENT}
+
   , MoveDesc "Cut" 30 tackle
       {ty=NOR, pow=50, acc=95, flags=CONTACT .|. SLICE .|. KROCK}
 
@@ -1596,7 +1622,7 @@ moves =
   , MoveDesc "Origin Pulse" 10 tackle
       {ty=WAT, cat=Special, pow=110, acc=85, targ=ADJFOES .|. WIDE, flags=PULSE}
   , MoveDesc "Outrage" 10 tackle
-      {ty=DRA, pow=120, eff=Locked, flags=CONTACT .|. KROCK}
+      {ty=DRA, pow=120, eff=Locked, flags=CONTACT .|. KROCK, targ=RANDOM_OPPONENT}
   , MoveDesc "Overdrive" 10 tackle
       {ty=ELE, cat=Special, pow=80, targ=ADJFOES .|. WIDE, flags=SOUND}
   , MoveDesc "Overheat" 5 tackle
@@ -1619,7 +1645,7 @@ moves =
   , MoveDesc "Petal Blizzard" 15 tackle
       {ty=GRA, targ=ADJACENT .|. WIDE, pow=90, flags=WIND}
   , MoveDesc "Petal Dance" 10 tackle
-      {ty=GRA, cat=Special, pow=120, flags=DANCE .|. CONTACT .|. KROCK, eff=Locked}
+      {ty=GRA, cat=Special, pow=120, flags=DANCE .|. CONTACT .|. KROCK, eff=Locked, targ=ADJFOES .|. RANDOM}
   , MoveDesc "Phantom Force" 10 tackle
       {pow=90, ty=GHO, eff=EInvul Phantom, flags=CONTACT .|. IGNPROT, acc=neverMiss}
   , MoveDesc "Photon Geyser" 5 tackle
@@ -1741,7 +1767,7 @@ moves =
   , MoveDesc "Raging Bull" 10 tackle -- TODO: Does this ignore protect?
       {ty=NOR, pow=90, eff=ClearScreen :+ RagingBull, flags=CONTACT .|. IGNPROT}
   , MoveDesc "Raging Fury" 10 tackle
-      {ty=FIR, pow=120, eff=RagingFury}
+      {ty=FIR, pow=120, eff=RagingFury, targ=RANDOM_OPPONENT}
   , MoveDesc "Rain Dance" 5 celebrate
       {ty=WAT, targ=ENTIRE_FIELD, eff=EWeather Rain}
   , MoveDesc "Rapid Spin" 40 tackle
@@ -2057,7 +2083,7 @@ moves =
   , MoveDesc "String Shot" 40 celebrate
       {ty=BUG, targ=ALL_OPPONENTS, acc=95, eff=AddBoost False zero {spe= -2}, flags=MCOAT}
   , MoveDesc "Struggle" 1 tackle
-      {ty=NON, pow=50, eff=Struggle, flags=CONTACT .|. KROCK, acc=neverMiss}
+      {ty=NON, pow=50, eff=Struggle, flags=CONTACT .|. KROCK, acc=neverMiss, targ=RANDOM_OPPONENT}
   , MoveDesc "Struggle Bug" 20 tackle
       {ty=BUG, targ=ALL_OPPONENTS, cat=Special, pow=50, eff=AddBoost False zero {spA= -1}}
   , MoveDesc "Stuff Cheeks" 10 celebrate
@@ -2147,7 +2173,7 @@ moves =
   , MoveDesc "Thousand Waves" 10 tackle
       {ty=GRO, pow=90, targ=ADJFOES .|. WIDE, eff=NoSwitch}
   , MoveDesc "Thrash" 10 tackle
-      {ty=NOR, pow=120, eff=Locked, flags=CONTACT .|. KROCK}
+      {ty=NOR, pow=120, eff=Locked, flags=CONTACT .|. KROCK, targ=ADJFOES .|. RANDOM}
   , MoveDesc "Throat Chop" 15 tackle
       {ty=DAR, pow=80, eff=TroatChop, flags=CONTACT}
   , MoveDesc "Thunder" 10 tackle
@@ -2221,7 +2247,7 @@ moves =
   , MoveDesc "U-turn" 20 tackle
       {ty=BUG, pow=70, eff=Switch True False False, flags=CONTACT .|. KROCK}
   , MoveDesc "Uproar" 10 tackle
-      {ty=NOR, cat=Special, pow=90, eff=Uproar, flags=SOUND .|. IGNSUB .|. KROCK}
+      {ty=NOR, cat=Special, pow=90, eff=Uproar, flags=SOUND .|. IGNSUB .|. KROCK, targ=RANDOM_OPPONENT}
   , MoveDesc "V-create" 5 tackle
       {ty=FIR, pow=180, acc=95, eff=AddBoost True zero {def= -1, spD= -1, spe= -1}, flags=CONTACT}
   , MoveDesc "Vacuum Wave" 30 tackle

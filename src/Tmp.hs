@@ -112,7 +112,7 @@ wrongTarget = do
               "user-or-ally"              -> Just $ Pok.ALLIES .|. Pok.SELF
               "opponents-field"           -> Just $ Pok.FOES .|. Pok.WIDE
               "user"                      -> Just Pok.SELF
-              "random-opponent"           -> Nothing
+              "random-opponent"           -> Just $ Pok.ADJFOES .|. Pok.RANDOM
               "all-other-pokemon"         -> Just $ Pok.ADJACENT .|. WIDE
               "selected-pokemon"          -> Just Pok.ADJACENT
               "all-opponents"             -> Just $ Pok.ADJFOES .|. WIDE

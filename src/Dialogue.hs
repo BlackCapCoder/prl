@@ -11,9 +11,9 @@ import Dialogue.Type
 import Control.Monad.State
 
 
-runDialogue d = do
-  ow <- overworld
-  go ow d
+runDialogue bg d = do
+  -- ow <- overworld
+  go bg d
   where
     go ow = \case
       End a   -> pure a

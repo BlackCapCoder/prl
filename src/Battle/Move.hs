@@ -62,17 +62,17 @@ runEffect env@MoveEnv {..} eff = do
       else do
         tell "But it failed.."
 
-    Curse -> do
-      if GHO `elem` user.pokemon.types
-      then do
-        env.putUser user
-          { pokemon = user.pokemon
-            { hp = max 0 $ user.pokemon.hp - div user.stats.hp 4
-            }
+    Curse
+      | GHO `elem` user.pokemon.types -> pure () -- call curse-ghost
+      | otherwise                     -> pure () -- call curse-non-ghost
+
+    CurseGhost -> do
+      env.putUser user
+        { pokemon = user.pokemon
+          { hp = max 0 $ user.pokemon.hp - div user.stats.hp 4
           }
-        env.putTarget targ { cursed = True }
-      else do
-        env.putUser user { boosts = user.boosts + zero {att=1,def=1,spe= -1,acc=0} }
+        }
+      env.putTarget targ { cursed = True }
 
     LeechSeed -> do
       unless (GRA `elem` targ.pokemon.types) do -- TODO: handle safety googles?

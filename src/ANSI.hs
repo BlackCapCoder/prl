@@ -1,7 +1,27 @@
 module ANSI where
 
 import Data.ByteString.Builder qualified as BS
+import System.IO
 
+
+tuiBracket m = do
+  oldEcho   <- hGetEcho stdout
+  oldBufIn  <- hGetBuffering stdin
+  oldBufOut <- hGetBuffering stdout
+
+  hSetEcho      stdout False
+  hSetBuffering stdin  NoBuffering
+  hSetBuffering stdout (BlockBuffering Nothing)
+
+  BS.hPutBuilder stdout (smcup <> hideCursor)
+  m
+  BS.hPutBuilder stdout (rmcup <> showCursor)
+
+  hSetEcho      stdout oldEcho
+  hSetBuffering stdin  oldBufIn
+  hSetBuffering stdout oldBufOut
+
+----
 
 smcup = "\ESC[?1049h"
 rmcup = "\ESC[?1049l"
