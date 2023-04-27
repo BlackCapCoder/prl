@@ -103,6 +103,7 @@ dependencies:
   - directory
   - random
   - random-shuffle
+  - megaparsec
 library:
   source-dirs: src
 name: prl
